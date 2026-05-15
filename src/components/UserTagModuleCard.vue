@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 //负责“用户标签识别/重点敏感用户”这块
 //显示标签占比、重点/敏感分类饼图、筛选查询、分页表格、详情弹窗
 //并通过emit把交互传给父组件（查询、翻页、打开详情等）
@@ -203,101 +203,9 @@ const updateKeyUserJumpPageInput = (event) => {
   emit('update:key-user-jump-page-input', event?.target?.value || '')
 }
 
-const cascadeRef = ref(null)
-const cascadeOpen = ref(false)
-const cascadeActiveCategory = ref(props.keyUserFilterCategory || '')
-
-const keyUserFilterCategoryMenuOptions = computed(() => [
-  { value: '', label: '全部' },
-  ...props.keyUserFilterCategoryOptions,
-])
-
-const selectedCategoryLabel = computed(() =>
-  props.keyUserFilterCategoryOptions.find((item) => item.value === props.keyUserFilterCategory)?.label || '',
-)
-
-const selectedFilterValueLabel = computed(() =>
-  props.keyUserFilterValueOptions.find((item) => item.value === props.keyUserFilterValue)?.label || '',
-)
-
-const cascadeTriggerLabel = computed(() => {
-  if (!props.keyUserFilterCategory) {
-    return '全部'
-  }
-  if (props.keyUserFilterValue) {
-    return selectedFilterValueLabel.value || '请选择'
-  }
-  return selectedCategoryLabel.value || '请选择'
-})
-
-const cascadeValueOptions = computed(() => {
-  if (!cascadeActiveCategory.value) {
-    return []
-  }
-  return cascadeActiveCategory.value === props.keyUserFilterCategory ? props.keyUserFilterValueOptions : []
-})
-
-const toggleCascade = () => {
-  cascadeOpen.value = !cascadeOpen.value
-  if (cascadeOpen.value) {
-    cascadeActiveCategory.value = props.keyUserFilterCategory || ''
-  }
+const updateKeyUserFilterValue = (event) => {
+  emit('update:key-user-filter-value', event?.target?.value || 'important')
 }
-
-const selectCascadeCategory = (categoryItem) => {
-  const categoryValue = categoryItem?.value || ''
-  if (!categoryValue) {
-    emit('update:key-user-filter-category', '')
-    emit('update:key-user-filter-value', '')
-    cascadeActiveCategory.value = ''
-    cascadeOpen.value = false
-    return
-  }
-
-  cascadeActiveCategory.value = categoryValue
-  if (props.keyUserFilterCategory !== categoryValue) {
-    emit('update:key-user-filter-category', categoryValue)
-    emit('update:key-user-filter-value', '')
-  }
-}
-
-const selectCascadeValue = (valueItem) => {
-  emit('update:key-user-filter-value', valueItem?.value || '')
-  cascadeOpen.value = false
-}
-
-const closeCascadeByOutside = (event) => {
-  if (!cascadeOpen.value) {
-    return
-  }
-  if (cascadeRef.value && !cascadeRef.value.contains(event.target)) {
-    cascadeOpen.value = false
-  }
-}
-
-watch(
-  () => props.keyUserFilterCategory,
-  (value) => {
-    cascadeActiveCategory.value = value || ''
-  },
-)
-
-watch(
-  () => props.showKeyUserDetailPage,
-  (visible) => {
-    if (!visible) {
-      cascadeOpen.value = false
-    }
-  },
-)
-
-onMounted(() => {
-  document.addEventListener('mousedown', closeCascadeByOutside)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', closeCascadeByOutside)
-})
 
 const KEY_USER_PIE_RING_RADIUS = 55
 const KEY_USER_PIE_RING_LENGTH = 2 * Math.PI * KEY_USER_PIE_RING_RADIUS
@@ -526,38 +434,11 @@ const hoveredNaturePieItem = computed(() =>
           @keyup.enter="emit('apply-key-user-search')"
         />
         <button type="button" class="user-detail-query-btn" @click="emit('apply-key-user-search')">查询</button>
-        <div ref="cascadeRef" class="key-user-cascade">
-          <button type="button" class="key-user-cascade-trigger" @click.stop="toggleCascade">
-            <span>{{ cascadeTriggerLabel }}</span>
-            <i aria-hidden="true">▾</i>
-          </button>
-          <div v-if="cascadeOpen" class="key-user-cascade-panel" :class="{ 'has-secondary': Boolean(cascadeActiveCategory) }" @click.stop>
-            <ul class="key-user-cascade-list key-user-cascade-list-primary">
-              <li
-                v-for="item in keyUserFilterCategoryMenuOptions"
-                :key="`cascade-primary-${item.value || 'all'}`"
-                :class="{ active: (item.value || '') === (cascadeActiveCategory || '') }"
-                @click="selectCascadeCategory(item)"
-              >
-                <span>{{ item.label }}</span>
-                <em v-if="item.value" aria-hidden="true">›</em>
-              </li>
-            </ul>
-            <ul v-if="cascadeActiveCategory" class="key-user-cascade-list key-user-cascade-list-secondary">
-              <li
-                v-for="item in cascadeValueOptions"
-                :key="`cascade-secondary-${cascadeActiveCategory}-${item.value}`"
-                :class="{ active: item.value === props.keyUserFilterValue }"
-                @click="selectCascadeValue(item)"
-              >
-                <span>{{ item.label }}</span>
-              </li>
-              <li v-if="cascadeValueOptions.length === 0" class="empty">
-                <span>请选择</span>
-              </li>
-            </ul>
-          </div>
-        </div>
+        <select :value="props.keyUserFilterValue" class="user-detail-type-select" @change="updateKeyUserFilterValue">
+          <option v-for="item in props.keyUserFilterValueOptions" :key="`key-user-filter-${item.value}`" :value="item.value">
+            {{ item.label }}
+          </option>
+        </select>
       </div>
 
       <div class="key-user-grid-wrap user-detail-grid-wrap">

@@ -1,8 +1,15 @@
-const TOKEN_API = '/api/esb/request-token'
+﻿const TOKEN_API = '/api/esb/request-token'
+const USE_FRONTEND_TOKEN = String(import.meta.env.VITE_USE_FRONTEND_TOKEN || 'false')
+  .trim()
+  .toLowerCase() === 'true'
 
 let tokenCache = null // { token, expiresAt }
 
 export const fetchToken = async () => {
+  if (!USE_FRONTEND_TOKEN) {
+    return { token: '', expiresIn: 7200 }
+  }
+
   const response = await fetch(TOKEN_API, { method: 'POST' })
   if (!response.ok) {
     throw new Error(`Token request failed: HTTP ${response.status}`)
@@ -17,6 +24,10 @@ export const fetchToken = async () => {
 let refreshPromise = null
 
 export const getToken = async () => {
+  if (!USE_FRONTEND_TOKEN) {
+    return ''
+  }
+
   // Return cached token if still valid (with 30s buffer)
   if (tokenCache && Date.now() < tokenCache.expiresAt - 30000) {
     return tokenCache.token
@@ -42,5 +53,10 @@ export const getToken = async () => {
 
 export const forceRefreshToken = async () => {
   tokenCache = null
+
+  if (!USE_FRONTEND_TOKEN) {
+    return ''
+  }
+
   return getToken()
 }

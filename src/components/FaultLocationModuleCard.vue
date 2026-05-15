@@ -161,7 +161,7 @@ const setFaultMode = (modeKey) => {
 </script>
 
 <template>
-  <article class="module-block module-clickable" @click="emit('open-outage-detail')">
+  <article class="module-block module-clickable" @click="emit('open-outage-detail', activeFaultMode)">
     <div class="fault-location-top">
       <div class="block-head fault-location-head">
         <h3>电力故障定位</h3>

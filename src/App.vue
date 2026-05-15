@@ -5,10 +5,6 @@ import {
   queryCountyList,
   queryCountyStats,
   queryCountyUserList,
-  queryFaultSummary,
-  queryOutageScopeEventList,
-  queryOutageScopeSummary,
-  queryTimeTrendUserList,
 } from './api/outage'
 import UserTagModuleCard from './components/UserTagModuleCard.vue'
 import KeyUserTimeTrendCard from './components/KeyUserTimeTrendCard.vue'
@@ -126,8 +122,8 @@ const selectedKeyUserCounty = ref('')
 const keyUserDetailCurrentPage = ref(1)
 const keyUserDetailSearchInput = ref('')
 const keyUserDetailSearchKeyword = ref('')
-const keyUserDetailSelectedFilterCategory = ref('')
-const keyUserDetailSelectedFilterValue = ref('')
+const keyUserDetailSelectedFilterCategory = ref('level')
+const keyUserDetailSelectedFilterValue = ref('important')
 const keyUserDetailJumpPageInput = ref('')
 const keyUserDetailStatsData = ref({
   summary: null,
@@ -528,87 +524,9 @@ const queryOutageUsersByTimeWindows = async ({ beginTime, endTime, outageEvents 
   return Array.from(recordMap.values())
 }
 
-const queryOutageEventsByPages = async ({ beginTime, endTime }) => {
-  const records = []
+const queryOutageEventsByPages = async () => []
 
-  for (let page = 1; page <= OUTAGE_LIST_MAX_PAGES; page += 1) {
-    const listPayload = {
-      beginTime,
-      endTime,
-      page,
-      perPage: OUTAGE_LIST_PAGE_SIZE,
-    }
-
-    const listRes = await queryOutageScopeEventList(listPayload)
-    const pageRecords = Array.isArray(listRes?.data?.list) ? listRes.data.list : []
-    records.push(...pageRecords)
-
-    const total = Math.max(safeNumber(listRes?.data?.total), 0)
-    const totalPages = Math.max(Math.ceil(total / OUTAGE_LIST_PAGE_SIZE), 1)
-    if (pageRecords.length === 0 || page >= totalPages) {
-      break
-    }
-  }
-
-  return records
-}
-
-const queryOutageUsersBySingleEvents = async ({ beginTime, endTime, outageNumbers = [] }) => {
-  return queryOutageUsersWithoutOutageFilter({
-    beginTime,
-    endTime,
-    outageNumbers,
-  })
-}
-
-const queryOutageUsersWithoutOutageFilter = async ({ beginTime, endTime }) => {
-  const recordMap = new Map()
-
-  for (let page = 1; page <= OUTAGE_USER_MAX_PAGES; page += 1) {
-    const payload = {
-      page,
-      perPage: OUTAGE_USER_PAGE_SIZE,
-      beginTime,
-      endTime,
-    }
-
-    const userRes = await queryTimeTrendUserList(payload)
-    const pageRecords = Array.isArray(userRes?.data?.list) ? userRes.data.list : []
-
-    pageRecords.forEach((item) => {
-      const key = buildUserRecordKey(item)
-      if (!recordMap.has(key)) {
-        recordMap.set(key, item)
-      }
-    })
-
-    const total = Math.max(safeNumber(userRes?.data?.total), 0)
-    const totalPages = Math.max(Math.ceil(total / OUTAGE_USER_PAGE_SIZE), 1)
-    const reachedTail = pageRecords.length === 0 || page >= totalPages
-    if (reachedTail || recordMap.size >= OUTAGE_USER_MAX_RECORDS) {
-      break
-    }
-  }
-
-  return Array.from(recordMap.values())
-}
-
-const queryOutageUsersByPages = async ({ beginTime, endTime, outageNumbers = [] }) => {
-  const fastRecords = await queryOutageUsersWithoutOutageFilter({
-    beginTime,
-    endTime,
-  })
-
-  if (fastRecords.length > 0 || outageNumbers.length === 0) {
-    return fastRecords
-  }
-
-  return queryOutageUsersBySingleEvents({
-    beginTime,
-    endTime,
-    outageNumbers,
-  })
-}
+const queryOutageUsersByPages = async () => []
 
 const buildTagStatsOverviewPayload = ({ beginTime, endTime }) => {
   const payload = {
@@ -802,20 +720,18 @@ const loadDashboardData = async (customRange = null) => {
       endTime,
     }
 
-    const [tagStatsResponse, listRecords, users, faultSummaryResponse, outageScopeSummaryResponse] = await Promise.all([
+    const [tagStatsResponse, listRecords, users] = await Promise.all([
       loadTagStatsOverview(basePayload),
       queryOutageEventsByPages(basePayload),
       queryOutageUsersByPages(basePayload),
-      queryFaultSummary(basePayload),
-      queryOutageScopeSummary(basePayload),
     ])
 
     outageIndexRecords.value = []
     tagStatsOverview.value = tagStatsResponse
     outageEvents.value = listRecords.map((item, index) => normalizeOutageEventRecord(item, index))
     outageUsers.value = users
-    faultSummaryData.value = faultSummaryResponse?.data || null
-    outageScopeSummaryData.value = outageScopeSummaryResponse?.data || null
+    faultSummaryData.value = null
+    outageScopeSummaryData.value = null
 
     if (outageUsers.value.length === 0 && outageEvents.value.length > 0) {
       dataNotice.value = '用户清单接口返回为空，标签识别和设备影响明细可能偏小。'
@@ -1925,12 +1841,10 @@ const loadKeyUserDetailRows = async () => {
   if (keyword) {
     payload.keyword = keyword
   }
-  if (keyUserDetailSelectedFilterCategory.value === 'level') {
-    if (keyUserDetailSelectedFilterValue.value === '重点') {
-      payload.userLevel = 'key'
-    } else if (keyUserDetailSelectedFilterValue.value === '敏感') {
-      payload.userLevel = 'sensitive'
-    }
+  if (keyUserDetailSelectedFilterValue.value === 'important') {
+    payload.userLevel = 'key'
+  } else if (keyUserDetailSelectedFilterValue.value === 'sensitive') {
+    payload.userLevel = 'sensitive'
   }
 
   const requestId = keyUserDetailListRequestId + 1
@@ -2067,16 +1981,10 @@ const keyUserFilterCategoryOptions = computed(() => [
   { value: 'level', label: '重点|敏感' },
 ])
 
-const keyUserFilterValueOptions = computed(() => {
-  const category = keyUserDetailSelectedFilterCategory.value
-  if (category === 'level') {
-    return [
-      { value: '重点', label: '重点' },
-      { value: '敏感', label: '敏感' },
-    ]
-  }
-  return []
-})
+const keyUserFilterValueOptions = computed(() => [
+  { value: 'important', label: '重要用户' },
+  { value: 'sensitive', label: '敏感用户' },
+])
 
 const filteredKeyUserDetailRows = computed(() => keyUserDetailRows.value)
 
@@ -2396,11 +2304,6 @@ const spaceDistributionDeviceRows = computed(() => {
       }
     })
     .sort((a, b) => {
-      const aTotal = a.importantUserCount + a.sensitiveUserCount
-      const bTotal = b.importantUserCount + b.sensitiveUserCount
-      if (aTotal !== bTotal) {
-        return bTotal - aTotal
-      }
       if (a.importantUserCount !== b.importantUserCount) {
         return b.importantUserCount - a.importantUserCount
       }
@@ -2627,8 +2530,8 @@ const openKeyUserDetailPage = async () => {
   showKeyUserDetailPage.value = true
   keyUserDetailSearchInput.value = ''
   keyUserDetailSearchKeyword.value = ''
-  keyUserDetailSelectedFilterCategory.value = ''
-  keyUserDetailSelectedFilterValue.value = ''
+  keyUserDetailSelectedFilterCategory.value = 'level'
+  keyUserDetailSelectedFilterValue.value = 'important'
   keyUserDetailJumpPageInput.value = ''
   keyUserDetailCurrentPage.value = 1
   selectedKeyUserCounty.value = ''
@@ -2990,15 +2893,6 @@ watch(filteredKeyUserDetailRows, (rows) => {
 
   if (keyUserDetailCurrentPage.value > keyUserDetailTotalPages.value) {
     keyUserDetailCurrentPage.value = keyUserDetailTotalPages.value
-    reloadKeyUserDetailList()
-  }
-})
-
-watch(keyUserDetailSelectedFilterCategory, () => {
-  const hadFilterValue = keyUserDetailSelectedFilterValue.value !== ''
-  keyUserDetailSelectedFilterValue.value = ''
-  keyUserDetailCurrentPage.value = 1
-  if (!hadFilterValue) {
     reloadKeyUserDetailList()
   }
 })

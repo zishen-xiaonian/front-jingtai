@@ -1,6 +1,9 @@
 ﻿import { getToken, forceRefreshToken } from './auth'
 
 const DEFAULT_TIMEOUT = 15000
+const USE_FRONTEND_TOKEN = String(import.meta.env.VITE_USE_FRONTEND_TOKEN || 'false')
+  .trim()
+  .toLowerCase() === 'true'
 
 const buildUrlWithQuery = (url, query = {}) => {
   const searchParams = new URLSearchParams()
@@ -46,13 +49,18 @@ const doFetch = async (url, payload = {}, options = {}) => {
   const requestUrl = isGet ? buildUrlWithQuery(url, payload) : url
   const { signal, clear } = createTimeoutSignal(timeout)
 
-  const fetchWithToken = async (token) => {
+  const fetchWithToken = async (token = '') => {
+    const requestHeaders = {
+      ...headers,
+    }
+
+    if (USE_FRONTEND_TOKEN && token) {
+      requestHeaders.Authorization = token
+    }
+
     const requestInit = {
       method: upperMethod,
-      headers: {
-        'Authorization': token,
-        ...headers,
-      },
+      headers: requestHeaders,
       signal,
     }
 
@@ -65,11 +73,11 @@ const doFetch = async (url, payload = {}, options = {}) => {
   }
 
   try {
-    const token = await getToken()
+    const token = USE_FRONTEND_TOKEN ? await getToken() : ''
     const response = await fetchWithToken(token)
 
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
+      if (USE_FRONTEND_TOKEN && (response.status === 401 || response.status === 403)) {
         const retryToken = await forceRefreshToken()
         const retryResponse = await fetchWithToken(retryToken)
         if (!retryResponse.ok) {
