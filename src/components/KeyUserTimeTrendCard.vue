@@ -18,6 +18,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  timeSubSegments: {
+    type: Array,
+    default: () => [],
+  },
   sensitiveSeries: {
     type: Array,
     default: () => [],
@@ -47,7 +51,7 @@ const SVG_HEIGHT = 260
 const CHART_PADDING = {
   top: 18,
   right: 12,
-  bottom: 62,
+  bottom: 88,
   left: 52,
 }
 
@@ -236,10 +240,15 @@ const chartSourceData = computed(() => {
   const end = toDate(props.endTime)
   const labels =
     props.timeSegments.length === pointCount ? props.timeSegments : buildDefaultTimePoints(start, end, pointCount)
+  const timeLabels =
+    props.timeSubSegments.length === pointCount
+      ? props.timeSubSegments
+      : Array.from({ length: pointCount }, () => '--:--')
 
   if (props.sensitiveSeries.length > 0 || props.importantSeries.length > 0) {
     return {
       labels,
+      timeLabels,
       sensitiveCounts: toCountArray(props.sensitiveSeries, pointCount),
       importantCounts: toCountArray(props.importantSeries, pointCount),
     }
@@ -248,6 +257,7 @@ const chartSourceData = computed(() => {
   if (!start || !end || start.getTime() >= end.getTime()) {
     return {
       labels,
+      timeLabels,
       sensitiveCounts: toCountArray([], pointCount),
       importantCounts: toCountArray([], pointCount),
     }
@@ -292,6 +302,7 @@ const chartSourceData = computed(() => {
 
   return {
     labels,
+    timeLabels,
     sensitiveCounts,
     importantCounts,
   }
@@ -336,6 +347,7 @@ const sensitivePoints = computed(() => {
   return chartSourceData.value.sensitiveCounts.map((value, index) => ({
     value,
     label: chartSourceData.value.labels[index] || `时间点${index + 1}`,
+    timeLabel: chartSourceData.value.timeLabels[index] || '--:--',
     x: calcX(index, pointCount),
     y: calcY(value),
   }))
@@ -346,10 +358,40 @@ const importantPoints = computed(() => {
   return chartSourceData.value.importantCounts.map((value, index) => ({
     value,
     label: chartSourceData.value.labels[index] || `时间点${index + 1}`,
+    timeLabel: chartSourceData.value.timeLabels[index] || '--:--',
     x: calcX(index, pointCount),
     y: calcY(value),
   }))
 })
+
+const getXAxisLabelAnchor = (index, total) => {
+  if (index === 0) {
+    return 'start'
+  }
+  if (index === total - 1) {
+    return 'end'
+  }
+  return 'middle'
+}
+
+const getXAxisLabelOffsetX = (index, total) => {
+  if (total < 6) {
+    return 0
+  }
+  if (index === 0) {
+    return -8
+  }
+  if (index === 1) {
+    return 8
+  }
+  if (index === total - 2) {
+    return -8
+  }
+  if (index === total - 1) {
+    return 8
+  }
+  return 0
+}
 
 const pointsToPath = (points) =>
   points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
@@ -737,13 +779,14 @@ watch(
 
           <g class="trend-x-labels">
             <text
-              v-for="point in sensitivePoints"
-              :key="`x-label-${point.x}-${point.label}`"
-              :x="point.x"
-              :y="SVG_HEIGHT - CHART_PADDING.bottom + 16"
-              text-anchor="middle"
+              v-for="(point, index) in sensitivePoints"
+              :key="`x-label-${point.x}-${point.label}-${point.timeLabel}`"
+              :x="point.x + getXAxisLabelOffsetX(index, sensitivePoints.length)"
+              :y="SVG_HEIGHT - CHART_PADDING.bottom + 22"
+              :text-anchor="getXAxisLabelAnchor(index, sensitivePoints.length)"
             >
-              {{ point.label }}
+              <tspan :x="point.x + getXAxisLabelOffsetX(index, sensitivePoints.length)">{{ point.label }}</tspan>
+              <tspan :x="point.x + getXAxisLabelOffsetX(index, sensitivePoints.length)" dy="14">{{ point.timeLabel }}</tspan>
             </text>
           </g>
         </svg>

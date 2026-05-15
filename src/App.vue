@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  queryCountyTrend,
   queryCountyDetailStats,
   queryCountyList,
   queryCountyStats,
@@ -69,6 +70,11 @@ const countyStatsRows = ref([])
 const countyList = ref([])
 const faultSummaryData = ref(null)
 const outageScopeSummaryData = ref(null)
+const countyTrendData = ref({
+  labels: [],
+  sensitiveSeries: [],
+  importantSeries: [],
+})
 
 const selectedRegion = ref('全部')
 const selectedEventId = ref('')
@@ -556,7 +562,7 @@ const hasCountyStatsField = (value) => {
 }
 
 const toCountyStatsRow = (value, fallbackName = '未知区县') => {
-  const countyName = toCountyDisplayName(value?.countyName || fallbackName) || fallbackName
+  const countyName = toCountyDisplayName(value?.countyName || value?.name || fallbackName) || fallbackName
   const importantCount = Math.max(safeNumber(value?.keyUsers), 0)
   const sensitiveCount = Math.max(safeNumber(value?.sensitiveUsers), 0)
 
@@ -584,13 +590,22 @@ const mapCountyStatsRows = (response) => {
       .filter((item) => item !== ''),
   )
 
+  const resolveStatsCountyId = (item) => String(item?.countyId || item?.id || '').trim()
+  const resolveStatsCountyName = (item) => normalizeCountyName(
+    toCountyDisplayName(item?.countyName || item?.name || ''),
+  )
+
   const isTangshanCountyStatsItem = (item) => {
-    const countyId = String(item?.countyId || '').trim()
+    if (tangshanCountyIdSet.size === 0 && tangshanCountyNameSet.size === 0) {
+      return true
+    }
+
+    const countyId = resolveStatsCountyId(item)
     if (countyId && tangshanCountyIdSet.has(countyId)) {
       return true
     }
 
-    const countyName = normalizeCountyName(toCountyDisplayName(item?.countyName || ''))
+    const countyName = resolveStatsCountyName(item)
     if (countyName && tangshanCountyNameSet.has(countyName)) {
       return true
     }
@@ -682,6 +697,121 @@ const loadTagStatsOverview = async ({ beginTime, endTime }) => {
   }
 }
 
+const USER_TIME_TREND_POINT_COUNT = 6
+
+const formatTrendDateLabel = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '----/--/--'
+  }
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}/${month}/${day}`
+}
+
+const formatTrendTimeLabel = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '--:--'
+  }
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+const buildTrendDateSegments = (beginTime, endTime) => {
+  const startDate = parseBackendDateTime(beginTime)
+  const endDate = parseBackendDateTime(endTime)
+  if (!startDate || !endDate || startDate.getTime() >= endDate.getTime()) {
+    return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, () => '----/--/--')
+  }
+
+  const totalSpan = endDate.getTime() - startDate.getTime()
+  const step = totalSpan / (USER_TIME_TREND_POINT_COUNT - 1)
+
+  return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, (_, index) => {
+    const pointTime = new Date(startDate.getTime() + step * index)
+    return formatTrendDateLabel(pointTime)
+  })
+}
+
+const buildTrendTimeSegments = (beginTime, endTime) => {
+  const startDate = parseBackendDateTime(beginTime)
+  const endDate = parseBackendDateTime(endTime)
+  if (!startDate || !endDate || startDate.getTime() >= endDate.getTime()) {
+    return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, () => '--:--')
+  }
+
+  const totalSpan = endDate.getTime() - startDate.getTime()
+  const step = totalSpan / (USER_TIME_TREND_POINT_COUNT - 1)
+
+  return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, (_, index) => {
+    const pointTime = new Date(startDate.getTime() + step * index)
+    return formatTrendTimeLabel(pointTime)
+  })
+}
+
+const buildDefaultCountyTrendData = (beginTime, endTime) => ({
+  labels: buildTrendDateSegments(beginTime, endTime),
+  timeLabels: buildTrendTimeSegments(beginTime, endTime),
+  sensitiveSeries: Array.from({ length: USER_TIME_TREND_POINT_COUNT }, () => 0),
+  importantSeries: Array.from({ length: USER_TIME_TREND_POINT_COUNT }, () => 0),
+})
+
+const mapCountyTrendData = (response, beginTime, endTime) => {
+  const data = response?.data
+  const points =
+    Array.isArray(data?.points)
+      ? data.points
+      : (Array.isArray(data?.list) ? data.list : (Array.isArray(data) ? data : []))
+  if (points.length === 0) {
+    return buildDefaultCountyTrendData(beginTime, endTime)
+  }
+
+  return {
+    labels: points.map((item) => {
+      const timePoint = readFieldValue(item, ['timePoint', 'time', 'date', 'x'])
+      return formatTrendDateLabel(parseBackendDateTime(timePoint))
+    }),
+    timeLabels: points.map((item) => {
+      const timePoint = readFieldValue(item, ['timePoint', 'time', 'date', 'x'])
+      return formatTrendTimeLabel(parseBackendDateTime(timePoint))
+    }),
+    sensitiveSeries: points.map((item) => {
+      const count = readFieldValue(item, ['sensitiveUsers', 'sensitiveUserCount', 'sensitiveCount'])
+      return Math.max(safeNumber(count), 0)
+    }),
+    importantSeries: points.map((item) => {
+      const count = readFieldValue(item, ['keyUsers', 'importantUsers', 'keyUserCount', 'importantCount'])
+      return Math.max(safeNumber(count), 0)
+    }),
+  }
+}
+
+const loadCountyTrendData = async ({ beginTime, endTime }) => {
+  if (!beginTime || !endTime) {
+    countyTrendData.value = buildDefaultCountyTrendData(beginTime, endTime)
+    return countyTrendData.value
+  }
+
+  const payload = {
+    beginTime,
+    endTime,
+  }
+  const countyId = getCountyIdByRegionName(selectedRegion.value)
+  if (countyId) {
+    payload.countyId = countyId
+  }
+
+  try {
+    const response = await queryCountyTrend(payload)
+    countyTrendData.value = mapCountyTrendData(response, beginTime, endTime)
+  } catch {
+    countyTrendData.value = buildDefaultCountyTrendData(beginTime, endTime)
+  }
+
+  return countyTrendData.value
+}
+
 const loadDashboardData = async (customRange = null) => {
   loading.value = true
   dataError.value = ''
@@ -725,6 +855,7 @@ const loadDashboardData = async (customRange = null) => {
       queryOutageEventsByPages(basePayload),
       queryOutageUsersByPages(basePayload),
     ])
+    await loadCountyTrendData(basePayload)
 
     outageIndexRecords.value = []
     tagStatsOverview.value = tagStatsResponse
@@ -749,6 +880,7 @@ const loadDashboardData = async (customRange = null) => {
     countyStatsRows.value = []
     faultSummaryData.value = null
     outageScopeSummaryData.value = null
+    countyTrendData.value = buildDefaultCountyTrendData(beginTime, endTime)
     dataError.value = `后端接口调用失败：${error?.message || '未知错误'}`
   } finally {
     loading.value = false
@@ -2121,95 +2253,25 @@ const buildUserTypeChart = (mode) => {
 const importantUserTypeChart = computed(() => buildUserTypeChart('important'))
 const sensitiveUserTypeChart = computed(() => buildUserTypeChart('sensitive'))
 
-const USER_TIME_TREND_SEGMENT_COUNT = 5
-const USER_TIME_TREND_POINT_COUNT = USER_TIME_TREND_SEGMENT_COUNT + 1
-
-const formatTrendTimeLabel = (date) => {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return '--:--'
-  }
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${hour}:${minute}`
-}
-
-const buildTrendTimeSegments = (startDate, endDate) => {
-  if (!startDate || !endDate || startDate.getTime() >= endDate.getTime()) {
-    return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, (_, index) => `时间点${index + 1}`)
-  }
-
-  const totalSpan = endDate.getTime() - startDate.getTime()
-  const step = totalSpan / USER_TIME_TREND_SEGMENT_COUNT
-
-  return Array.from({ length: USER_TIME_TREND_POINT_COUNT }, (_, index) => {
-    const pointTime = new Date(startDate.getTime() + step * index)
-    return formatTrendTimeLabel(pointTime)
-  })
-}
-
 const keyUserTimeTrend = computed(() => {
-  const startDate = parseBackendDateTime(toBackendDateTime(queryStartTime.value))
-  const endDate = parseBackendDateTime(toBackendDateTime(queryEndTime.value))
-  const labels = buildTrendTimeSegments(startDate, endDate)
-  const sensitiveSeries = [0, 0, 0, 0, 0, 0]
-  const importantSeries = [0, 0, 0, 0, 0, 0]
+  const beginTime = toBackendDateTime(queryStartTime.value)
+  const endTime = toBackendDateTime(queryEndTime.value)
+  const fallback = buildDefaultCountyTrendData(beginTime, endTime)
+  const source = countyTrendData.value || {}
+  const labels = Array.isArray(source.labels) && source.labels.length > 0 ? source.labels : fallback.labels
+  const timeLabels = Array.isArray(source.timeLabels) && source.timeLabels.length > 0
+    ? source.timeLabels
+    : fallback.timeLabels
+  const sensitiveSeries =
+    Array.isArray(source.sensitiveSeries) && source.sensitiveSeries.length > 0
+      ? source.sensitiveSeries
+      : fallback.sensitiveSeries
+  const importantSeries =
+    Array.isArray(source.importantSeries) && source.importantSeries.length > 0
+      ? source.importantSeries
+      : fallback.importantSeries
 
-  if (!startDate || !endDate || startDate.getTime() >= endDate.getTime()) {
-    return {
-      labels,
-      sensitiveSeries,
-      importantSeries,
-    }
-  }
-
-  const startMs = startDate.getTime()
-  const endMs = endDate.getTime()
-  const step = (endMs - startMs) / USER_TIME_TREND_SEGMENT_COUNT
-
-  tagAndKeyUserSourceUsers.value.forEach((item) => {
-    const record = normalizeUserRecord(item)
-    const timeValue = readFieldValue(record, [
-      'ctime',
-      'beginTime',
-      'begin_time',
-      'statTime',
-      'stat_time',
-      'eventTime',
-      'event_time',
-    ])
-    const userTime = parseBackendDateTime(timeValue)
-    if (!userTime) {
-      return
-    }
-
-    const timestamp = userTime.getTime()
-    if (timestamp < startMs || timestamp > endMs) {
-      return
-    }
-
-    const rawIndex = timestamp === endMs ? USER_TIME_TREND_SEGMENT_COUNT - 1 : Math.floor((timestamp - startMs) / step)
-    const segmentIndex = Math.min(USER_TIME_TREND_SEGMENT_COUNT - 1, Math.max(0, rawIndex))
-    const pointIndex = segmentIndex + 1
-    const classified = classifyUserByScore(record)
-
-    if (classified.isSensitive) {
-      sensitiveSeries[pointIndex] += 1
-    }
-    if (classified.isImportant) {
-      importantSeries[pointIndex] += 1
-    }
-  })
-
-  for (let i = 1; i < USER_TIME_TREND_POINT_COUNT; i += 1) {
-    sensitiveSeries[i] += sensitiveSeries[i - 1]
-    importantSeries[i] += importantSeries[i - 1]
-  }
-
-  return {
-    labels,
-    sensitiveSeries,
-    importantSeries,
-  }
+  return { labels, timeLabels, sensitiveSeries, importantSeries }
 })
 
 const keyUserCountRows = computed(() => {
@@ -2829,6 +2891,10 @@ watch(selectedRegion, (regionName) => {
   })
 
   void loadTagStatsOverview({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+  })
+  void loadCountyTrendData({
     beginTime: toBackendDateTime(queryStartTime.value),
     endTime: toBackendDateTime(queryEndTime.value),
   })
@@ -3467,6 +3533,7 @@ onBeforeUnmount(() => {
                 :end-time="queryEndTime"
                 :users="tagAndKeyUserSourceUsers"
                 :time-segments="keyUserTimeTrend.labels"
+                :time-sub-segments="keyUserTimeTrend.timeLabels"
                 :sensitive-series="keyUserTimeTrend.sensitiveSeries"
                 :important-series="keyUserTimeTrend.importantSeries"
               />

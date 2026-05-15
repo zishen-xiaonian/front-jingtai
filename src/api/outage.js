@@ -10,6 +10,7 @@ const DEFAULT_STATS_TIMEOUT = 20000
 
 const COUNTY_LIST_API = import.meta.env.VITE_COUNTY_LIST_API || '/api/county/list'
 const COUNTY_STATS_API = import.meta.env.VITE_COUNTY_STATS_API || '/api/county/stats'
+const COUNTY_TREND_API = import.meta.env.VITE_COUNTY_TREND_API || '/api/county/trend'
 const COUNTY_DETAIL_STATS_API = import.meta.env.VITE_COUNTY_DETAIL_STATS_API || '/api/county/detail-stats'
 const COUNTY_USER_LIST_API = import.meta.env.VITE_COUNTY_USER_LIST_API || '/api/county/user-list'
 
@@ -43,6 +44,11 @@ export const queryCountyList = (params = {}) =>
 
 export const queryCountyStats = (params) =>
   postJson(COUNTY_STATS_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryCountyTrend = (params) =>
+  postJson(COUNTY_TREND_API, params, {
     timeout: DEFAULT_STATS_TIMEOUT,
   })
 
