@@ -81,6 +81,10 @@ const detailModalLoading = ref(false)
 const detailModalError = ref('')
 const detailModalRequestId = ref(0)
 const selectedTopDeviceId = ref('')
+const DETAIL_PAGE_SIZE = 8
+const DETAIL_PAGE_MAX_BUTTONS = 5
+const detailCurrentPage = ref(1)
+const detailJumpPageInput = ref('')
 
 const normalizedDetailRows = computed(() =>
   props.detailRows.map((item, index) => {
@@ -109,6 +113,38 @@ const normalizedDetailRows = computed(() =>
 )
 
 const top5RankedRows = computed(() => normalizedDetailRows.value.slice(0, 5))
+
+const detailTotalPages = computed(() => Math.max(Math.ceil(normalizedDetailRows.value.length / DETAIL_PAGE_SIZE), 1))
+
+const pagedDetailRows = computed(() => {
+  const start = (detailCurrentPage.value - 1) * DETAIL_PAGE_SIZE
+  return normalizedDetailRows.value.slice(start, start + DETAIL_PAGE_SIZE)
+})
+
+const detailPageButtons = computed(() => {
+  const total = detailTotalPages.value
+  if (total <= DETAIL_PAGE_MAX_BUTTONS) {
+    return Array.from({ length: total }, (_, index) => index + 1)
+  }
+
+  const half = Math.floor(DETAIL_PAGE_MAX_BUTTONS / 2)
+  let start = detailCurrentPage.value - half
+  let end = detailCurrentPage.value + half
+  if (start < 1) {
+    start = 1
+    end = DETAIL_PAGE_MAX_BUTTONS
+  }
+  if (end > total) {
+    end = total
+    start = total - DETAIL_PAGE_MAX_BUTTONS + 1
+  }
+
+  const pages = []
+  for (let page = start; page <= end; page += 1) {
+    pages.push(page)
+  }
+  return pages
+})
 
 const topDeviceMaxImpact = computed(() =>
   top5RankedRows.value.reduce((max, item) => Math.max(max, item.importantUserCount), 0),
@@ -154,8 +190,20 @@ watch(
   { immediate: true },
 )
 
+watch(
+  detailTotalPages,
+  (total) => {
+    if (detailCurrentPage.value > total) {
+      detailCurrentPage.value = total
+    }
+  },
+  { immediate: true },
+)
+
 const openDetailPage = () => {
   detailPageVisible.value = true
+  detailCurrentPage.value = 1
+  detailJumpPageInput.value = ''
   emit('open-detail-page')
 }
 
@@ -166,6 +214,8 @@ const closeDetailPage = () => {
   detailModalError.value = ''
   selectedDetailRow.value = null
   detailModalRequestId.value += 1
+  detailCurrentPage.value = 1
+  detailJumpPageInput.value = ''
   emit('close-detail-page')
 }
 
@@ -247,6 +297,26 @@ const closeDetailModal = () => {
 
 const selectTopDevice = (item) => {
   selectedTopDeviceId.value = item?.id || ''
+}
+
+const goDetailPage = (page) => {
+  if (!Number.isFinite(page)) {
+    return
+  }
+  detailCurrentPage.value = Math.max(1, Math.min(detailTotalPages.value, Math.round(page)))
+  detailJumpPageInput.value = ''
+}
+
+const jumpToDetailPage = () => {
+  const input = String(detailJumpPageInput.value ?? '').trim()
+  if (!input) {
+    return
+  }
+  const parsed = Number(input)
+  if (!Number.isFinite(parsed)) {
+    return
+  }
+  goDetailPage(parsed)
 }
 
 const buildTopBarStyle = (totalCount) => {
@@ -388,7 +458,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
                 <span>敏感用户数</span>
                 <span>详情</span>
               </li>
-              <li v-for="item in normalizedDetailRows" :key="item.id" class="key-user-grid user-detail-grid user-detail-grid-row">
+              <li v-for="item in pagedDetailRows" :key="item.id" class="key-user-grid user-detail-grid user-detail-grid-row">
                 <span class="user-detail-cell" :title="item.deviceNo">{{ item.deviceNo }}</span>
                 <span class="user-detail-cell" :title="item.deviceName">{{ item.deviceName }}</span>
                 <span class="user-detail-cell">{{ item.importantUserCount }}</span>
@@ -399,6 +469,32 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 
             <p v-if="normalizedDetailRows.length === 0" class="empty-tip">当前区域暂无设备影响用户数据。</p>
           </div>
+
+          <footer class="user-detail-pagination" v-if="normalizedDetailRows.length > 0">
+            <button
+              v-for="page in detailPageButtons"
+              :key="`space-detail-page-${page}`"
+              type="button"
+              class="page-btn"
+              :class="{ active: page === detailCurrentPage }"
+              @click="goDetailPage(page)"
+            >
+              {{ page }}
+            </button>
+
+            <div class="user-detail-page-jump">
+              <input
+                v-model="detailJumpPageInput"
+                type="number"
+                min="1"
+                :max="detailTotalPages"
+                class="user-detail-page-input"
+                placeholder="&#39029;&#30721;"
+                @keyup.enter="jumpToDetailPage"
+              />
+              <button type="button" class="user-detail-page-jump-btn" @click="jumpToDetailPage">&#36339;&#36716;</button>
+            </div>
+          </footer>
         </section>
       </div>
 
@@ -645,7 +741,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 
 .space-summary-item p {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: #b7d7f0;
   line-height: 1.2;
 }
@@ -653,7 +749,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 .space-summary-item strong {
   margin-top: 6px;
   display: block;
-  font-size: 28px;
+  font-size: 24px;
   color: #edf8ff;
   line-height: 1;
 }
@@ -661,7 +757,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 .space-summary-item small {
   margin-top: 6px;
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   color: #8bc9ef;
   line-height: 1.2;
 }
@@ -680,22 +776,36 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   min-height: 0;
 }
 
+.space-selected-card {
+  overflow: hidden;
+}
+
 .space-rank-list {
   list-style: none;
-  margin: 10px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   display: grid;
-  gap: 8px;
-  overflow-y: auto;
+  flex: 1;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  overflow-y: hidden;
   min-height: 0;
+}
+
+.space-rank-card h4 {
+  font-size: 15px;
 }
 
 .space-rank-item {
   width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   border: 1px solid rgba(112, 190, 248, 0.35);
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(11, 45, 79, 0.75);
-  padding: 8px;
+  padding: 6px 8px;
   color: #e6f5ff;
   cursor: pointer;
 }
@@ -707,8 +817,8 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 
 .space-rank-item-head {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 6px;
   align-items: center;
 }
 
@@ -716,12 +826,12 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   border: 1px solid rgba(124, 202, 255, 0.55);
   color: #d7f0ff;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .space-rank-name {
@@ -729,20 +839,20 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .space-rank-count {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
   color: #eaf8ff;
 }
 
 .space-rank-bar-bg {
-  margin-top: 8px;
+  margin-top: 6px;
   display: block;
   width: 100%;
-  height: 10px;
+  height: 7px;
   border-radius: 999px;
   background: rgba(80, 123, 163, 0.65);
   overflow: hidden;
@@ -758,16 +868,36 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 .space-selected-fields {
   margin-top: 10px;
   display: grid;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #3ad7ff transparent;
+}
+
+.space-selected-fields::-webkit-scrollbar {
+  width: 6px;
+}
+
+.space-selected-fields::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3ad7ff, #2f5dff);
+  border-radius: 999px;
 }
 
 .space-selected-fields p {
   margin: 0;
+  min-width: 0;
   border: 1px solid rgba(108, 192, 250, 0.35);
   border-radius: 10px;
   background: rgba(8, 34, 66, 0.85);
   color: #edf8ff;
   font-size: 13px;
+  line-height: 1.35;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
 }
 
@@ -820,15 +950,15 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 
 @media (max-width: 1280px) {
   .space-summary-item strong {
-    font-size: 24px;
+    font-size: 20px;
   }
 
   .space-rank-name {
-    font-size: 16px;
+    font-size: 13px;
   }
 
   .space-rank-count {
-    font-size: 18px;
+    font-size: 15px;
   }
 }
 
