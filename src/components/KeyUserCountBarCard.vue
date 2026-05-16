@@ -502,21 +502,27 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
         <article class="user-detail-modal key-user-detail-modal">
           <button type="button" class="user-detail-modal-close" @click="closeDetailModal">×</button>
           <h4>设备影响用户详情</h4>
-          <div class="user-detail-modal-content">
+          <div
+            class="user-detail-modal-content"
+            :class="{ 'sensitive-list-empty': selectedDetailRow.sensitiveUserList.length === 0 }"
+          >
             <p><span>设备编号：</span>{{ selectedDetailRow.deviceNo }}</p>
             <p><span>设备名称：</span>{{ selectedDetailRow.deviceName }}</p>
             <p><span>重点用户数：</span>{{ selectedDetailRow.importantUserCount }}</p>
             <p><span>敏感用户数：</span>{{ selectedDetailRow.sensitiveUserCount }}</p>
 
-            <div class="space-user-list-card">
+            <div class="space-user-list-card important-list-card">
               <p class="space-user-list-title">重点用户清单：</p>
-              <ul v-if="selectedDetailRow.importantUserList.length > 0" class="space-user-list">
+              <ul v-if="selectedDetailRow.importantUserList.length > 0" class="space-user-list important-user-list">
                 <li v-for="item in selectedDetailRow.importantUserList" :key="`important-${item}`">{{ item }}</li>
               </ul>
               <p v-else class="space-user-list-empty">无</p>
             </div>
 
-            <div class="space-user-list-card">
+            <div
+              class="space-user-list-card sensitive-list-card"
+              :class="{ 'is-empty': selectedDetailRow.sensitiveUserList.length === 0 }"
+            >
               <p class="space-user-list-title">敏感用户清单：</p>
               <ul v-if="selectedDetailRow.sensitiveUserList.length > 0" class="space-user-list">
                 <li v-for="item in selectedDetailRow.sensitiveUserList" :key="`sensitive-${item}`">{{ item }}</li>
@@ -918,17 +924,50 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   --user-detail-grid-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 70px;
 }
 
+.key-user-detail-modal.user-detail-modal {
+  max-height: min(92vh, 760px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.key-user-detail-modal .user-detail-modal-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: repeat(4, auto) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.key-user-detail-modal .user-detail-modal-content.sensitive-list-empty {
+  grid-template-rows: repeat(4, auto) minmax(0, 1fr) auto;
+}
+
 .space-user-list-card {
   border: 1px solid rgba(111, 138, 184, 0.28);
   border-radius: 8px;
   background: #0c1f39a3;
   padding: 8px;
   color: #e8f6ff;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.important-list-card {
+  max-height: 220px;
+}
+
+.sensitive-list-card.is-empty {
+  grid-template-rows: auto;
+  align-content: start;
 }
 
 .space-user-list-title {
   margin: 0 0 8px;
   color: #8fc0e5;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .space-user-list {
@@ -936,9 +975,38 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   padding-left: 20px;
   display: grid;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #3ad7ff transparent;
+}
+
+.space-user-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.space-user-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3ad7ff, #2f5dff);
+  border-radius: 999px;
+}
+
+.important-user-list {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.important-user-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.important-user-list::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 .space-user-list li {
+  font-size: 12px;
   line-height: 1.35;
   word-break: break-all;
 }
@@ -946,6 +1014,14 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 .space-user-list-empty {
   margin: 0;
   color: #c4dff6;
+  font-size: 12px;
+  line-height: 1.35;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sensitive-list-card.is-empty .space-user-list-empty {
+  overflow: visible;
 }
 
 @media (max-width: 1280px) {

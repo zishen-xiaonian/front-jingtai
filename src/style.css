@@ -1235,6 +1235,10 @@
   gap: 8px;
 }
 
+.key-user-detail-layer > .user-detail-modal-mask {
+  z-index: 45;
+}
+
 .panel-left .panel-inner:has(.key-user-detail-layer) {
   overflow: visible;
 }
