@@ -11,6 +11,13 @@ import {
   queryCountyStats,
   queryCountyUserDetail,
   queryCountyUserList,
+  queryRightPanelCountyWarnings,
+  queryRightPanelFaultLocation,
+  queryRightPanelOutageChains,
+  queryRightPanelOutageEventDetail,
+  queryRightPanelOutageEvents,
+  queryRightPanelOutageEventsSummary,
+  queryRightPanelOutageScope,
 } from './api/outage'
 import UserTagModuleCard from './components/UserTagModuleCard.vue'
 import KeyUserTimeTrendCard from './components/KeyUserTimeTrendCard.vue'
@@ -75,6 +82,7 @@ const countyStatsRows = ref([])
 const countyList = ref([])
 const faultSummaryData = ref(null)
 const outageScopeSummaryData = ref(null)
+const countyWarningLightsData = ref([])
 const countyTrendData = ref({
   labels: [],
   sensitiveSeries: [],
@@ -99,9 +107,15 @@ const selectedRegion = ref('全部')
 const selectedEventId = ref('')
 const activeMapEvent = ref(null)
 const showOutageRangeAssessmentPage = ref(false)
+const outageRangeChainsData = ref([])
+const outageRangeChainsTotal = ref(0)
+const outageRangeChainsCurrentPage = ref(1)
 const showOutageDetailPage = ref(false)
 const outageDetailModalVisible = ref(false)
 const selectedOutageDetail = ref(null)
+const outageEventsSummaryData = ref(null)
+const outageDetailRows = ref([])
+const outageDetailTotal = ref(0)
 const outageDetailCurrentPage = ref(1)
 const outageDetailSearchInput = ref('')
 const outageDetailSearchKeyword = ref('')
@@ -110,7 +124,7 @@ const outageDetailGridBodyRef = ref(null)
 const outageDetailPaginationRef = ref(null)
 const outageDetailPageJumpRef = ref(null)
 const outageDetailJumpPageInput = ref('')
-const outageDetailRowsPerPage = ref(1)
+const outageDetailRowsPerPage = ref(20)
 const OUTAGE_DETAIL_MIN_PAGE_SIZE = 1
 const OUTAGE_DETAIL_MAX_PAGE_SIZE = 40
 const OUTAGE_DETAIL_FALLBACK_HEAD_HEIGHT = 34
@@ -118,6 +132,11 @@ const OUTAGE_DETAIL_FALLBACK_ROW_HEIGHT = 38
 const OUTAGE_DETAIL_PAGE_SIZE_BUFFER = 0
 const OUTAGE_DETAIL_MAX_PAGE_BUTTONS = 9
 let outageDetailLayoutObserver = null
+let outageDetailListRequestId = 0
+let outageEventsSummaryRequestId = 0
+let outageRangeChainsRequestId = 0
+let outageEventDetailRequestId = 0
+let suppressOutageDetailAutoReload = false
 const showUserDetailPage = ref(false)
 const userDetailModalVisible = ref(false)
 const selectedUserDetail = ref(null)
@@ -287,6 +306,17 @@ const getCountyIdByRegionName = (regionName) => {
   return matched?.countyId || ''
 }
 
+const appendCountyOrCityScope = (payload) => {
+  const scopedPayload = payload || {}
+  const countyId = getCountyIdByRegionName(selectedRegion.value)
+  if (countyId) {
+    scopedPayload.countyId = countyId
+  } else if (countyListCityId) {
+    scopedPayload.cityId = countyListCityId
+  }
+  return scopedPayload
+}
+
 const getEventId = (event) =>
   event?.id ||
   event?.eventId ||
@@ -432,6 +462,10 @@ const OUTAGE_SINGLE_EVENT_MAX = 400
 const OUTAGE_SINGLE_EVENT_PAGE_LIMIT = 3
 const OUTAGE_TIME_WINDOW_MONTHS = 1
 const OUTAGE_TIME_WINDOW_MAX = 36
+const OUTAGE_DETAIL_DEFAULT_PAGE = 1
+const OUTAGE_DETAIL_DEFAULT_PER_PAGE = 20
+const OUTAGE_DETAIL_REMOTE_MAX_PER_PAGE = 500
+const OUTAGE_CHAINS_REMOTE_PAGE_SIZE = 4
 
 const chunkArray = (list, size) => {
   if (!Array.isArray(list) || list.length === 0 || size <= 0) {
@@ -573,17 +607,10 @@ const queryOutageEventsByPages = async () => []
 const queryOutageUsersByPages = async () => []
 
 const buildTagStatsOverviewPayload = ({ beginTime, endTime }) => {
-  const payload = {
+  return appendCountyOrCityScope({
     beginTime,
     endTime,
-  }
-
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  }
-
-  return payload
+  })
 }
 
 const hasCountyStatsField = (value) => {
@@ -652,7 +679,7 @@ const mapCountyStatsRows = (response) => {
   }
 
   if (Array.isArray(data.list)) {
-    return data.list
+    const mappedRows = data.list
       .filter((item) => hasCountyStatsField(item) && isTangshanCountyStatsItem(item))
       .map((item) => toCountyStatsRow(item))
       .sort((a, b) => {
@@ -666,14 +693,23 @@ const mapCountyStatsRows = (response) => {
         }
         return a.name.localeCompare(b.name, 'zh-Hans-CN')
       })
+
+    if (mappedRows.length > 0) {
+      return mappedRows
+    }
   }
 
-  if (!hasCountyStatsField(data)) {
+  const summaryData =
+    data?.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)
+      ? data.summary
+      : data
+
+  if (!hasCountyStatsField(summaryData)) {
     return []
   }
 
   const selectedName = selectedRegion.value === '全部' ? '当前区县' : selectedRegion.value
-  return [toCountyStatsRow({ ...data, countyName: selectedName }, selectedName)]
+  return [toCountyStatsRow({ ...summaryData, countyName: selectedName }, selectedName)]
 }
 
 const mapTagStatsOverview = (response) => {
@@ -891,10 +927,7 @@ const loadCountyTrendData = async ({ beginTime, endTime }) => {
     beginTime,
     endTime,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  }
+  appendCountyOrCityScope(payload)
 
   try {
     const response = await queryCountyTrend(payload)
@@ -916,10 +949,7 @@ const loadCountyOutageFreqData = async ({ beginTime, endTime }) => {
     beginTime,
     endTime,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  }
+  appendCountyOrCityScope(payload)
 
   try {
     const response = await queryCountyOutageFreq(payload)
@@ -952,12 +982,7 @@ const loadCountyEquipmentStatsSummary = async ({ beginTime, endTime }) => {
     beginTime,
     endTime,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  } else if (countyListCityId) {
-    payload.cityId = countyListCityId
-  }
+  appendCountyOrCityScope(payload)
 
   try {
     const response = await queryCountyEquipmentStats(payload)
@@ -1020,12 +1045,7 @@ const loadCountyEquipmentListRows = async ({ beginTime, endTime }) => {
     beginTime,
     endTime,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  } else if (countyListCityId) {
-    payload.cityId = countyListCityId
-  }
+  appendCountyOrCityScope(payload)
 
   try {
     const response = await queryCountyEquipmentList(payload)
@@ -1089,12 +1109,7 @@ const loadCountyEquipmentPageRows = async ({ beginTime, endTime }) => {
     page: SPACE_EQUIPMENT_PAGE_NUMBER,
     perPage: SPACE_EQUIPMENT_PAGE_SIZE,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  } else if (countyListCityId) {
-    payload.cityId = countyListCityId
-  }
+  appendCountyOrCityScope(payload)
 
   try {
     const response = await queryCountyEquipmentPage(payload)
@@ -1106,6 +1121,538 @@ const loadCountyEquipmentPageRows = async ({ beginTime, endTime }) => {
   return countyEquipmentPageRows.value
 }
 
+const buildFaultLocationPayload = ({ beginTime, endTime, dimension }) => {
+  return appendCountyOrCityScope({
+    beginTime,
+    endTime,
+    dimension,
+  })
+}
+
+const buildOutageScopePayload = ({ beginTime, endTime }) => {
+  return appendCountyOrCityScope({
+    beginTime,
+    endTime,
+  })
+}
+
+const normalizeOutageNatureCode = (value) => {
+  const plain = String(value || '').trim()
+  const lowered = plain.toLowerCase()
+  if (['planned', '01', '1'].includes(lowered) || plain.includes('计划')) {
+    return 'planned'
+  }
+  if (['fault', '02', '2'].includes(lowered) || plain.includes('故障')) {
+    return 'fault'
+  }
+  if (['other', '03', '3'].includes(lowered) || plain.includes('其他')) {
+    return 'other'
+  }
+  return ''
+}
+
+const buildOutageEventsPayload = ({ beginTime, endTime, page = OUTAGE_DETAIL_DEFAULT_PAGE, perPage = OUTAGE_DETAIL_DEFAULT_PER_PAGE }) => {
+  const payload = {
+    beginTime,
+    endTime,
+    page: Math.max(OUTAGE_DETAIL_DEFAULT_PAGE, Math.round(safeNumber(page))),
+    perPage: Math.max(
+      OUTAGE_DETAIL_MIN_PAGE_SIZE,
+      Math.min(OUTAGE_DETAIL_REMOTE_MAX_PER_PAGE, Math.round(safeNumber(perPage) || OUTAGE_DETAIL_DEFAULT_PER_PAGE)),
+    ),
+  }
+
+  appendCountyOrCityScope(payload)
+
+  const keyword = String(outageDetailSearchKeyword.value || '').trim()
+  if (keyword) {
+    payload.keyword = keyword
+  }
+
+  const outageNatureCode = normalizeOutageNatureCode(outageDetailSelectedNature.value)
+  if (outageNatureCode) {
+    payload.outageNature = outageNatureCode
+  }
+
+  return payload
+}
+
+const resolveOutageEventsResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.outageEvents && typeof data.outageEvents === 'object' && !Array.isArray(data.outageEvents)) {
+    return data.outageEvents
+  }
+  return data
+}
+
+const normalizeOutageEventsSummary = (summary, fallbackTotal = 0) => {
+  const data = summary && typeof summary === 'object' && !Array.isArray(summary) ? summary : {}
+  const totalEvents = Math.max(safeNumber(data.totalEvents), Math.max(0, safeNumber(fallbackTotal)))
+  const natureRatioList = Array.isArray(data.natureRatio) ? data.natureRatio : []
+  const normalizedNatureRatio = natureRatioList.map((item) => ({
+    name: String(item?.name || '').trim(),
+    code: normalizeOutageNatureCode(item?.code || item?.name || item?.outageNature),
+    value: Math.max(safeNumber(item?.value), 0),
+    percent: Math.max(safeNumber(item?.percent), 0),
+  }))
+
+  const restoredEvents = Math.max(safeNumber(data.restoredEvents), 0)
+  const unrestoredEvents = Math.max(safeNumber(data.unrestoredEvents), Math.max(totalEvents - restoredEvents, 0))
+  const restoredRate = Number.isFinite(Number(data.restoredRate))
+    ? Number(Number(data.restoredRate).toFixed(2))
+    : totalEvents > 0
+      ? Number(((restoredEvents / totalEvents) * 100).toFixed(2))
+      : 0
+
+  return {
+    totalEvents,
+    natureRatio: normalizedNatureRatio,
+    restoredEvents,
+    unrestoredEvents,
+    restoredRate,
+  }
+}
+
+const resolveOutageEventsSummaryResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.outageEventsSummary && typeof data.outageEventsSummary === 'object' && !Array.isArray(data.outageEventsSummary)) {
+    return data.outageEventsSummary
+  }
+  return data
+}
+
+const resolveOutageEventDetailResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.outageEventDetail && typeof data.outageEventDetail === 'object' && !Array.isArray(data.outageEventDetail)) {
+    return data.outageEventDetail
+  }
+  return data
+}
+
+const toDisplayText = (value, fallback = '-') => {
+  const text = String(value ?? '').trim()
+  return text || fallback
+}
+
+const joinNameList = (value) => {
+  if (!Array.isArray(value)) {
+    return ''
+  }
+  return value
+    .map((item) => String(item ?? '').trim())
+    .filter((item) => item !== '')
+    .join('、')
+}
+
+const mapOutageEventDetailForModal = (detailData, fallbackItem = null) => {
+  const record = normalizeUserRecord(detailData)
+  const fallback = fallbackItem && typeof fallbackItem === 'object' ? fallbackItem : {}
+  const outageNumber = toDisplayText(
+    readFieldValue(record, ['outageNumber', 'outage_number', 'eventNo', 'event_no', 'id']) || fallback?.outageNumber,
+  )
+  const beginTime = toDisplayText(
+    readFieldValue(record, ['beginTime', 'begin_time', 'outageBeginTime', 'outage_begin_time']) || fallback?.beginTime,
+  )
+  const endTimeRaw = String(
+    readFieldValue(record, ['endTime', 'end_time', 'outageEndTime', 'outage_end_time', 'restoreTime', 'restore_time']) || fallback?.endTime || '',
+  ).trim()
+  const hasEndTime = endTimeRaw !== '' && endTimeRaw !== '-' && endTimeRaw.toLowerCase() !== 'null'
+  const restored = toBooleanFlag(readFieldValue(record, ['isRestored', 'restored'])) || hasEndTime
+  const feederNamesText =
+    joinNameList(readFieldValue(record, ['feederNames'])) ||
+    toDisplayText(
+      readFieldValue(record, ['rdtFeederName', 'rdt_feeder_name', 'feederName', 'feeder_name']) || fallback?.rdtFeederName,
+    )
+  const equipmentNamesText =
+    joinNameList(readFieldValue(record, ['equipmentNames'])) ||
+    toDisplayText(
+      readFieldValue(record, ['faultEquipName', 'fault_equip_name', 'equipmentName', 'equipment_name']) || fallback?.faultEquipName,
+    )
+
+  return {
+    ...fallback,
+    ...record,
+    id: toDisplayText(readFieldValue(record, ['id']) || fallback?.id || outageNumber),
+    outageNumber,
+    beginTime,
+    status: restored ? '已复电' : '抢修中',
+    endTime: hasEndTime ? endTimeRaw : '-',
+    maintGroupName: toDisplayText(readFieldValue(record, ['maintGroupName', 'maint_group_name']) || fallback?.maintGroupName),
+    countyName: toDisplayText(readFieldValue(record, ['countyName', 'county_name']) || fallback?.countyName),
+    affectedConsCnt: Math.max(
+      safeNumber(readFieldValue(record, ['affectedUsers', 'affected_users', 'affectedConsCnt', 'affected_cons_cnt']) || fallback?.affectedConsCnt),
+      0,
+    ),
+    rdtFeederName: feederNamesText,
+    rdtSubsName: toDisplayText(
+      readFieldValue(record, ['substationName', 'substation_name', 'rdtSubsName', 'rdt_subs_name']) || fallback?.rdtSubsName,
+    ),
+    faultEquipName: equipmentNamesText,
+    outageReason: toDisplayText(readFieldValue(record, ['outageReason', 'outage_reason']) || fallback?.outageReason),
+    outageNature: outageNatureText(
+      readFieldValue(record, ['outageNature', 'outage_nature']) || fallback?.outageNature,
+    ),
+  }
+}
+
+const buildOutageEventsSummaryPayload = ({ beginTime, endTime }) => {
+  const payload = {
+    beginTime,
+    endTime,
+  }
+
+  appendCountyOrCityScope(payload)
+
+  const keyword = String(outageDetailSearchKeyword.value || '').trim()
+  if (keyword) {
+    payload.keyword = keyword
+  }
+
+  const outageNatureCode = normalizeOutageNatureCode(outageDetailSelectedNature.value)
+  if (outageNatureCode) {
+    payload.outageNature = outageNatureCode
+  }
+
+  return payload
+}
+
+const loadRightPanelOutageEventsSummary = async ({ beginTime, endTime } = {}) => {
+  if (!showOutageDetailPage.value) {
+    return null
+  }
+
+  if (!beginTime || !endTime) {
+    outageEventsSummaryData.value = null
+    return null
+  }
+
+  const payload = buildOutageEventsSummaryPayload({ beginTime, endTime })
+  const requestId = ++outageEventsSummaryRequestId
+
+  try {
+    const response = await queryRightPanelOutageEventsSummary(payload)
+    if (requestId !== outageEventsSummaryRequestId) {
+      return null
+    }
+
+    const remoteData = resolveOutageEventsSummaryResponseData(response) || {}
+    outageEventsSummaryData.value = normalizeOutageEventsSummary(remoteData, 0)
+    return outageEventsSummaryData.value
+  } catch (error) {
+    if (requestId !== outageEventsSummaryRequestId) {
+      return null
+    }
+    console.error(error)
+    outageEventsSummaryData.value = null
+    return null
+  }
+}
+
+const mapOutageDetailRow = (item, index, page, perPage) => {
+  const outageNumber = String(item?.outageNumber || item?.outage_number || item?.eventNo || '').trim() || '-'
+  const countyName = normalizeCountyName(item?.countyName || item?.county_name || '-') || '-'
+  const affectedConsCnt = Math.max(safeNumber(item?.affectedUsers ?? item?.affectedConsCnt ?? item?.affected_cons_cnt), 0)
+  const outageNatureCode = item?.outageNature || item?.outage_nature || item?.code || ''
+  const beginTime = String(item?.beginTime || item?.begin_time || '-').trim() || '-'
+  const endTimeRaw = String(item?.endTime || item?.end_time || '').trim()
+  const hasEndTime = endTimeRaw !== '' && endTimeRaw !== '-' && endTimeRaw.toLowerCase() !== 'null'
+  const restoredByFlag = toBooleanFlag(item?.isRestored ?? item?.restored)
+  const restored = restoredByFlag || hasEndTime
+  const rowIndex = (Math.max(page, 1) - 1) * Math.max(perPage, 1) + index
+
+  return {
+    ...item,
+    id: String(item?.id || `${outageNumber}-${rowIndex}`),
+    outageNumber,
+    countyName,
+    affectedConsCnt,
+    outageNature: outageNatureText(outageNatureCode),
+    beginTime,
+    status: restored ? '已复电' : '抢修中',
+    endTime: hasEndTime ? endTimeRaw : '-',
+    maintGroupName: String(item?.maintGroupName || item?.maint_group_name || '-').trim() || '-',
+    rdtFeederId: String(item?.rdtFeederId || item?.rdt_feeder_id || item?.feederId || item?.feeder_id || '').trim(),
+    rdtFeederName: String(item?.rdtFeederName || item?.rdt_feeder_name || item?.feederName || item?.feeder_name || '-').trim() || '-',
+    rdtFeederDevType: String(
+      item?.rdtFeederDevType || item?.rdt_feeder_dev_type || item?.rdtFeederType || item?.rdt_feeder_type || item?.devType || item?.dev_type || '',
+    ).trim(),
+    rdtSubsName: String(item?.rdtSubsName || item?.rdt_subs_name || item?.substationName || item?.substation_name || '-').trim() || '-',
+    faultEquipName: String(item?.faultEquipName || item?.fault_equip_name || item?.equipmentName || item?.equipment_name || '-').trim() || '-',
+    outageReason: String(item?.outageReason || item?.outage_reason || '-').trim() || '-',
+  }
+}
+
+const loadRightPanelOutageEvents = async ({
+  beginTime,
+  endTime,
+  page = outageDetailCurrentPage.value,
+  perPage = outageDetailRowsPerPage.value,
+} = {}) => {
+  if (!showOutageDetailPage.value) {
+    return null
+  }
+
+  if (!beginTime || !endTime) {
+    outageDetailRows.value = []
+    outageDetailTotal.value = 0
+    return null
+  }
+
+  const payload = buildOutageEventsPayload({ beginTime, endTime, page, perPage })
+  const requestId = ++outageDetailListRequestId
+
+  try {
+    const response = await queryRightPanelOutageEvents(payload)
+    if (requestId !== outageDetailListRequestId) {
+      return null
+    }
+
+    const remoteData = resolveOutageEventsResponseData(response) || {}
+    const remoteList = Array.isArray(remoteData.list) ? remoteData.list : []
+    const resolvedPage = Math.max(OUTAGE_DETAIL_DEFAULT_PAGE, Math.round(safeNumber(remoteData.page) || payload.page))
+    const resolvedPerPage = payload.perPage
+    const resolvedTotal = Math.max(safeNumber(remoteData.total), remoteList.length)
+
+    outageDetailCurrentPage.value = resolvedPage
+    outageDetailRowsPerPage.value = resolvedPerPage
+    outageDetailTotal.value = resolvedTotal
+    outageDetailRows.value = remoteList.map((item, index) => mapOutageDetailRow(item, index, resolvedPage, resolvedPerPage))
+
+    return {
+      summary: normalizeOutageEventsSummary(remoteData.summary, resolvedTotal),
+      total: outageDetailTotal.value,
+      page: outageDetailCurrentPage.value,
+      perPage: outageDetailRowsPerPage.value,
+      list: outageDetailRows.value,
+    }
+  } catch (error) {
+    if (requestId !== outageDetailListRequestId) {
+      return null
+    }
+
+    console.error(error)
+    outageDetailRows.value = []
+    outageDetailTotal.value = 0
+    return null
+  }
+}
+
+const normalizeFaultLocationModeSummary = (rawModeData, modeKey, label) => {
+  const data =
+    rawModeData && typeof rawModeData === 'object' && !Array.isArray(rawModeData)
+      ? rawModeData
+      : {}
+  const danger = Math.max(safeNumber(data?.danger ?? data?.red ?? data?.highImpact?.count ?? data?.highImpact), 0)
+  const warning = Math.max(
+    safeNumber(data?.warning ?? data?.yellow ?? data?.mediumImpact?.count ?? data?.mediumImpact),
+    0,
+  )
+  const safe = Math.max(safeNumber(data?.safe ?? data?.green ?? data?.lowImpact?.count ?? data?.lowImpact), 0)
+  const barsTotal = danger + warning + safe
+  const total = Math.max(safeNumber(data?.total ?? data?.count), barsTotal)
+  const matchedEvents = Math.max(safeNumber(data?.matchedEvents), 0)
+
+  return {
+    key: modeKey,
+    label,
+    total,
+    matchedEvents,
+    bars: [
+      { key: 'danger', colorLabel: '红色', count: danger },
+      { key: 'warning', colorLabel: '黄色', count: warning },
+      { key: 'safe', colorLabel: '绿色', count: safe },
+    ],
+  }
+}
+
+const resolveFaultLocationResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.faultLocation && typeof data.faultLocation === 'object' && !Array.isArray(data.faultLocation)) {
+    return data.faultLocation
+  }
+  return data
+}
+
+const resolveOutageScopeResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.outageScope && typeof data.outageScope === 'object' && !Array.isArray(data.outageScope)) {
+    return data.outageScope
+  }
+  return data
+}
+
+const loadRightPanelFaultLocationSummary = async ({ beginTime, endTime, dimension = 'feeder' }) => {
+  if (!beginTime || !endTime) {
+    faultSummaryData.value = null
+    return null
+  }
+
+  const modeKey = dimension === 'substation' ? 'substation' : 'feeder'
+
+  try {
+    const response = await queryRightPanelFaultLocation(
+      buildFaultLocationPayload({ beginTime, endTime, dimension: modeKey }),
+    )
+    const remoteData = resolveFaultLocationResponseData(response)
+    const modeSummary = normalizeFaultLocationModeSummary(
+      remoteData,
+      modeKey,
+      modeKey === 'substation' ? '变电站' : '线路',
+    )
+    const currentModes =
+      faultSummaryData.value?.modes && typeof faultSummaryData.value.modes === 'object'
+        ? faultSummaryData.value.modes
+        : {}
+    faultSummaryData.value = {
+      modes: {
+        ...currentModes,
+        [modeKey]: modeSummary,
+      },
+    }
+
+    return modeSummary
+  } catch {
+    if (modeKey === 'feeder') {
+      faultSummaryData.value = null
+    }
+    return null
+  }
+}
+
+const loadRightPanelOutageScopeSummary = async ({ beginTime, endTime }) => {
+  if (!beginTime || !endTime) {
+    outageScopeSummaryData.value = null
+    return null
+  }
+
+  try {
+    const response = await queryRightPanelOutageScope(buildOutageScopePayload({ beginTime, endTime }))
+    outageScopeSummaryData.value = resolveOutageScopeResponseData(response)
+    return outageScopeSummaryData.value
+  } catch {
+    outageScopeSummaryData.value = null
+    return null
+  }
+}
+
+const buildOutageChainsPayload = ({ beginTime, endTime, page = 1, perPage = OUTAGE_CHAINS_REMOTE_PAGE_SIZE }) => {
+  const payload = {
+    beginTime,
+    endTime,
+    page: Math.max(1, Math.round(safeNumber(page) || 1)),
+    perPage: Math.max(1, Math.min(500, Math.round(safeNumber(perPage) || OUTAGE_CHAINS_REMOTE_PAGE_SIZE))),
+  }
+  appendCountyOrCityScope(payload)
+  return payload
+}
+
+const resolveOutageChainsResponseData = (response) => {
+  const data = response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null
+  }
+  if (data.outageChains && typeof data.outageChains === 'object' && !Array.isArray(data.outageChains)) {
+    return data.outageChains
+  }
+  return data
+}
+
+const mapOutageRangeChainRow = (item, index = 0) => {
+  const toNameList = (list) => {
+    if (!Array.isArray(list)) {
+      return []
+    }
+    return list
+      .map((name) => String(name || '').trim())
+      .filter((name) => name !== '')
+  }
+
+  const importantUsers = toNameList(item?.importantUsers)
+  const sensitiveUsers = toNameList(item?.sensitiveUsers)
+  const outageNumber = String(item?.outageNumber || item?.outage_number || '').trim() || '-'
+  const rdtFeederName = String(item?.feederName || item?.rdtFeederName || item?.rdt_feeder_name || '-').trim() || '-'
+  const rdtSubsName = String(item?.substationName || item?.rdtSubsName || item?.rdt_subs_name || '-').trim() || '-'
+  const maintGroupName = String(item?.maintGroupName || item?.maint_group_name || '-').trim() || '-'
+  const normalUserCount = Math.max(safeNumber(item?.normalUserCount), 0)
+  const key = `${outageNumber}-${rdtFeederName}-${index}`
+
+  return {
+    key,
+    outageNumber,
+    rdtFeederName,
+    rdtSubsName,
+    maintGroupName,
+    importantUsers,
+    sensitiveUsers,
+    importantUserText: importantUsers.length > 0 ? importantUsers.join('、') : '无',
+    sensitiveUserText: sensitiveUsers.length > 0 ? sensitiveUsers.join('、') : '无',
+    normalUserCount,
+  }
+}
+
+const loadRightPanelOutageChains = async ({ beginTime, endTime, page = outageRangeChainsCurrentPage.value } = {}) => {
+  if (!showOutageRangeAssessmentPage.value) {
+    return null
+  }
+
+  if (!beginTime || !endTime) {
+    outageRangeChainsData.value = []
+    outageRangeChainsTotal.value = 0
+    return null
+  }
+
+  const requestId = ++outageRangeChainsRequestId
+
+  try {
+    const payload = buildOutageChainsPayload({
+      beginTime,
+      endTime,
+      page,
+      perPage: OUTAGE_CHAINS_REMOTE_PAGE_SIZE,
+    })
+    const response = await queryRightPanelOutageChains(payload)
+
+    if (requestId !== outageRangeChainsRequestId) {
+      return null
+    }
+
+    const remoteData = resolveOutageChainsResponseData(response) || {}
+    const resolvedPage = Math.max(1, Math.round(safeNumber(remoteData.page) || payload.page))
+    const list = Array.isArray(remoteData.list) ? remoteData.list : []
+    const total = Math.max(safeNumber(remoteData.total), list.length)
+
+    outageRangeChainsCurrentPage.value = resolvedPage
+    outageRangeChainsTotal.value = total
+    outageRangeChainsData.value = list.map((item, index) =>
+      mapOutageRangeChainRow(item, (resolvedPage - 1) * OUTAGE_CHAINS_REMOTE_PAGE_SIZE + index),
+    )
+    return outageRangeChainsData.value
+  } catch (error) {
+    if (requestId !== outageRangeChainsRequestId) {
+      return null
+    }
+    console.error(error)
+    outageRangeChainsData.value = []
+    outageRangeChainsTotal.value = 0
+    return null
+  }
+}
+
 const handleOpenTimeTrendDetailPage = () => {
   const beginTime = toBackendDateTime(queryStartTime.value)
   const endTime = toBackendDateTime(queryEndTime.value)
@@ -1113,6 +1660,29 @@ const handleOpenTimeTrendDetailPage = () => {
   void loadCountyOutageFreqData({
     beginTime,
     endTime,
+  })
+}
+
+const handleFaultLocationModeChange = (modeKey) => {
+  if (modeKey !== 'substation') {
+    return
+  }
+
+  const existingSubstationMode = faultSummaryData.value?.modes?.substation
+  if (existingSubstationMode && typeof existingSubstationMode === 'object') {
+    return
+  }
+
+  const beginTime = toBackendDateTime(queryStartTime.value)
+  const endTime = toBackendDateTime(queryEndTime.value)
+  if (!beginTime || !endTime) {
+    return
+  }
+
+  void loadRightPanelFaultLocationSummary({
+    beginTime,
+    endTime,
+    dimension: 'substation',
   })
 }
 
@@ -1127,6 +1697,13 @@ const loadDashboardData = async (customRange = null) => {
   countyEquipmentPageRows.value = []
   faultSummaryData.value = null
   outageScopeSummaryData.value = null
+  countyWarningLightsData.value = []
+  outageRangeChainsData.value = []
+  outageRangeChainsTotal.value = 0
+  outageRangeChainsCurrentPage.value = 1
+  outageEventsSummaryData.value = null
+  outageDetailRows.value = []
+  outageDetailTotal.value = 0
 
   const beginTime = customRange?.beginTime || toBackendDateTime(queryStartTime.value)
   const endTime = customRange?.endTime || toBackendDateTime(queryEndTime.value)
@@ -1162,6 +1739,9 @@ const loadDashboardData = async (customRange = null) => {
       queryOutageEventsByPages(basePayload),
       queryOutageUsersByPages(basePayload),
       loadCountyTrendData(basePayload),
+      queryRightPanelCountyWarnings(basePayload),
+      loadRightPanelFaultLocationSummary({ ...basePayload, dimension: 'feeder' }),
+      loadRightPanelOutageScopeSummary(basePayload),
     ]
     if (spaceDistributionDetailVisible.value) {
       requests.push(loadCountyEquipmentStatsSummary(basePayload))
@@ -1169,14 +1749,29 @@ const loadDashboardData = async (customRange = null) => {
       requests.push(loadCountyEquipmentPageRows(basePayload))
     }
 
-    const [tagStatsResponse, listRecords, users] = await Promise.all(requests)
+    const [
+      tagStatsResponse,
+      listRecords,
+      users,
+      ,
+      countyWarningsResponse,
+      ,
+      ,
+    ] = await Promise.all(requests)
+    const countyWarningsData = countyWarningsResponse?.data
+    const countyWarningsList = Array.isArray(countyWarningsData)
+      ? countyWarningsData
+      : Array.isArray(countyWarningsData?.list)
+        ? countyWarningsData.list
+        : Array.isArray(countyWarningsData?.countyWarnings)
+          ? countyWarningsData.countyWarnings
+          : []
 
     outageIndexRecords.value = []
     tagStatsOverview.value = tagStatsResponse
     outageEvents.value = listRecords.map((item, index) => normalizeOutageEventRecord(item, index))
     outageUsers.value = users
-    faultSummaryData.value = null
-    outageScopeSummaryData.value = null
+    countyWarningLightsData.value = mapOverviewCountyWarningLights(countyWarningsList)
 
     if (outageUsers.value.length === 0 && outageEvents.value.length > 0) {
       dataNotice.value = '用户清单接口返回为空，标签识别和设备影响明细可能偏小。'
@@ -1197,6 +1792,13 @@ const loadDashboardData = async (customRange = null) => {
     countyEquipmentPageRows.value = []
     faultSummaryData.value = null
     outageScopeSummaryData.value = null
+    countyWarningLightsData.value = []
+    outageRangeChainsData.value = []
+    outageRangeChainsTotal.value = 0
+    outageRangeChainsCurrentPage.value = 1
+    outageEventsSummaryData.value = null
+    outageDetailRows.value = []
+    outageDetailTotal.value = 0
     countyTrendData.value = buildDefaultCountyTrendData(beginTime, endTime)
     countyOutageFreqData.value = buildDefaultCountyOutageFreqData()
     dataError.value = `后端接口调用失败：${error?.message || '未知错误'}`
@@ -1224,43 +1826,82 @@ const filteredOutageEvents = computed(() => {
 const countyRegionOptions = computed(() => regionOptions.value)
 const selectedRegionCountyId = computed(() => getCountyIdByRegionName(selectedRegion.value))
 
-const countyWarningLights = computed(() => {
-  const fallbackCountyNames = Object.keys(countyCenterMap)
-  const countyNameSet = new Set()
+const resolveCountyWarningHasOutage = (item, outageCount) => {
+  if (!item || typeof item !== 'object') {
+    return outageCount > 0
+  }
 
-  countyList.value.forEach((item) => {
-    const normalized = normalizeCountyName(toCountyDisplayName(item?.countyName || ''))
-    if (normalized) {
-      countyNameSet.add(normalized)
+  const explicitFlagKeys = ['hasOutage', 'hasWarning', 'warning', 'isWarning', 'alert']
+  for (const key of explicitFlagKeys) {
+    if (item[key] !== undefined && item[key] !== null && String(item[key]).trim() !== '') {
+      return toBooleanFlag(item[key])
     }
-  })
+  }
 
-  fallbackCountyNames.forEach((countyName) => {
-    const normalized = normalizeCountyName(countyName)
-    if (normalized) {
-      countyNameSet.add(normalized)
+  const statusText = String(item.status || item.warningLevel || item.level || '')
+    .trim()
+    .toLowerCase()
+  if (statusText) {
+    if (['warning', 'danger', 'alert', 'outage', 'abnormal', 'fault', 'red', '1', 'true'].includes(statusText)) {
+      return true
     }
-  })
+    if (['safe', 'normal', 'green', '0', 'false'].includes(statusText)) {
+      return false
+    }
+  }
 
-  const outageCountMap = new Map()
-  outageEvents.value.forEach((item) => {
-    const countyName = normalizeCountyName(item?.countyName || '')
+  return outageCount > 0
+}
+
+const mapOverviewCountyWarningLights = (rawList) => {
+  if (!Array.isArray(rawList)) {
+    return []
+  }
+
+  const warningMap = new Map()
+  rawList.forEach((item) => {
+    if (!item || typeof item !== 'object') {
+      return
+    }
+
+    const countyName = normalizeCountyName(
+      toCountyDisplayName(item.countyName || item.name || item.county || item.countyLabel || ''),
+    )
     if (!countyName) {
       return
     }
-    outageCountMap.set(countyName, (outageCountMap.get(countyName) || 0) + 1)
+
+    const outageCount = Math.max(
+      safeNumber(
+        item.outageCount ??
+          item.outageEventCount ??
+          item.warningCount ??
+          item.eventCount ??
+          item.count ??
+          item.totalOutages,
+      ),
+      0,
+    )
+    const hasOutage = resolveCountyWarningHasOutage(item, outageCount)
+    const existing = warningMap.get(countyName)
+    if (existing) {
+      existing.outageCount += outageCount
+      existing.hasOutage = existing.hasOutage || hasOutage || existing.outageCount > 0
+      return
+    }
+
+    warningMap.set(countyName, {
+      countyName,
+      outageCount,
+      hasOutage: hasOutage || outageCount > 0,
+    })
   })
 
-  return Array.from(countyNameSet)
-    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
-    .map((countyName) => {
-      const outageCount = outageCountMap.get(countyName) || 0
-      return {
-        countyName,
-        outageCount,
-        hasOutage: outageCount > 0,
-      }
-    })
+  return Array.from(warningMap.values()).sort((a, b) => a.countyName.localeCompare(b.countyName, 'zh-Hans-CN'))
+}
+
+const countyWarningLights = computed(() => {
+  return countyWarningLightsData.value
 })
 
 const isTargetCityRecord = (item) => {
@@ -1281,6 +1922,99 @@ const filteredFaultOutageEvents = computed(() =>
 const faultLocationSummary = computed(() => {
   const remote = faultSummaryData.value
   if (remote && typeof remote === 'object') {
+    const normalizeBarKey = (value) => {
+      const rawKey = String(value || '').trim().toLowerCase()
+      if (['danger', 'red', 'high', 'highimpact'].includes(rawKey)) {
+        return 'danger'
+      }
+      if (['warning', 'yellow', 'medium', 'mediumimpact'].includes(rawKey)) {
+        return 'warning'
+      }
+      if (['safe', 'green', 'low', 'lowimpact'].includes(rawKey)) {
+        return 'safe'
+      }
+      return ''
+    }
+
+    const buildBarsFromUnknownSource = (...sources) => {
+      const counters = {
+        danger: 0,
+        warning: 0,
+        safe: 0,
+      }
+
+      sources.forEach((source) => {
+        if (!source) {
+          return
+        }
+
+        if (Array.isArray(source)) {
+          source.forEach((item) => {
+            if (!item || typeof item !== 'object') {
+              return
+            }
+            const barKey = normalizeBarKey(item.key || item.color || item.name || item.label)
+            if (!barKey) {
+              return
+            }
+            counters[barKey] += Math.max(safeNumber(item.count ?? item.value ?? item.total), 0)
+          })
+          return
+        }
+
+        if (typeof source === 'object') {
+          Object.entries(source).forEach(([rawKey, rawValue]) => {
+            const barKey = normalizeBarKey(rawKey)
+            if (!barKey) {
+              return
+            }
+            counters[barKey] += Math.max(safeNumber(rawValue), 0)
+          })
+        }
+      })
+
+      return [
+        { key: 'danger', colorLabel: '红色', count: counters.danger },
+        { key: 'warning', colorLabel: '黄色', count: counters.warning },
+        { key: 'safe', colorLabel: '绿色', count: counters.safe },
+      ]
+    }
+
+    const buildModeSummary = (modeKey, modeLabel, modeData) => {
+      const bars = buildBarsFromUnknownSource(modeData?.bars, modeData?.colorBars)
+      const barsTotal = bars.reduce((sum, item) => sum + item.count, 0)
+      const total = Math.max(
+        safeNumber(modeData?.total ?? modeData?.matchedEvents ?? modeData?.count ?? barsTotal),
+        barsTotal,
+      )
+      const matchedEvents = Math.max(safeNumber(modeData?.matchedEvents), 0)
+
+      return {
+        key: modeKey,
+        label: modeLabel,
+        total,
+        matchedEvents,
+        bars,
+      }
+    }
+
+    const remoteModes = remote?.modes && typeof remote.modes === 'object' ? remote.modes : null
+    if (remoteModes) {
+      const feederMode = buildModeSummary('feeder', '线路', remoteModes.feeder ?? remoteModes.line ?? {})
+      const substationMode = buildModeSummary('substation', '变电站', remoteModes.substation ?? {})
+      const equipmentMode = buildModeSummary('equipment', '设备', remoteModes.equipment ?? {})
+
+      return {
+        feederTotal: feederMode.total,
+        equipmentTotal: equipmentMode.total,
+        modes: {
+          feeder: feederMode,
+          substation: substationMode,
+          equipment: equipmentMode,
+        },
+      }
+    }
+
     const highCount = Math.max(safeNumber(remote?.highImpact?.count ?? remote?.highImpact), 0)
     const mediumCount = Math.max(safeNumber(remote?.mediumImpact?.count ?? remote?.mediumImpact), 0)
     const lowCount = Math.max(safeNumber(remote?.lowImpact?.count ?? remote?.lowImpact), 0)
@@ -1383,113 +2117,67 @@ const faultLocationSummary = computed(() => {
     feederTotal: feederStats.total,
     equipmentTotal: equipmentStats.total,
     modes: {
-      feeder: {
-        key: 'feeder',
-        label: '线路',
-        total: feederStats.total,
-        bars: feederStats.bars,
+        feeder: {
+          key: 'feeder',
+          label: '线路',
+          total: feederStats.total,
+          matchedEvents: Math.max(safeNumber(filteredFaultOutageEvents.value.length), 0),
+          bars: feederStats.bars,
+        },
+        substation: {
+          key: 'substation',
+          label: '变电站',
+          total: substationStats.total,
+          matchedEvents: Math.max(safeNumber(filteredFaultOutageEvents.value.length), 0),
+          bars: substationStats.bars,
+        },
+        equipment: {
+          key: 'equipment',
+          label: '设备',
+          total: equipmentStats.total,
+          matchedEvents: Math.max(safeNumber(filteredFaultOutageEvents.value.length), 0),
+          bars: equipmentStats.bars,
+        },
       },
-      substation: {
-        key: 'substation',
-        label: '变电站',
-        total: substationStats.total,
-        bars: substationStats.bars,
-      },
-      equipment: {
-        key: 'equipment',
-        label: '设备',
-        total: equipmentStats.total,
-        bars: equipmentStats.bars,
-      },
-    },
-  }
-})
-
-const outageUserCountByOutageNumber = computed(() => {
-  const countMap = new Map()
-
-  outageUsersBySelectedCounty.value.forEach((item) => {
-    const record = normalizeUserRecord(item)
-    const outageNumber = String(extractOutageNumberParam(record) || '').trim()
-    if (outageNumber) {
-      countMap.set(outageNumber, (countMap.get(outageNumber) || 0) + 1)
     }
-  })
-
-  return countMap
 })
-
-const outageDetailRows = computed(() =>
-  filteredFaultOutageEvents.value
-    .map((item, index) => {
-      const outageNumber = String(readFieldValue(item, ['outageNumber', 'outage_number']) || getEventId(item) || '-')
-      const countyName = normalizeCountyName(readFieldValue(item, ['countyName', 'county_name'])) || '-'
-      const affectedConsCnt = safeNumber(
-        outageUserCountByOutageNumber.value.get(outageNumber) ?? 0,
-      )
-      const nature = outageNatureText(readFieldValue(item, ['outageNature', 'outage_nature']))
-      const beginTime = readFieldValue(item, ['beginTime', 'begin_time']) || '-'
-      const endTimeRaw = String(readFieldValue(item, ['endTime', 'end_time']) || '').trim()
-      const hasEndTime = endTimeRaw !== '' && endTimeRaw !== '-' && endTimeRaw.toLowerCase() !== 'null'
-
-      return {
-        id: getEventId(item) || `${outageNumber}-${index}`,
-        outageNumber,
-        countyName,
-        affectedConsCnt,
-        outageNature: nature,
-        beginTime,
-        status: hasEndTime ? '已复电' : '抢修中',
-        endTime: hasEndTime ? endTimeRaw : '-',
-        maintGroupName: readFieldValue(item, ['maintGroupName', 'maint_group_name']) || '-',
-        rdtFeederId: readFieldValue(item, ['rdtFeederId', 'rdt_feeder_id', 'feederId', 'feeder_id']) || '',
-        rdtFeederName: readFieldValue(item, ['rdtFeederName', 'rdt_feeder_name']) || '-',
-        rdtFeederDevType: readFieldValue(item, [
-          'rdtFeederDevType',
-          'rdt_feeder_dev_type',
-          'rdtFeederType',
-          'rdt_feeder_type',
-          'devType',
-          'dev_type',
-        ]) || '',
-        rdtSubsName: readFieldValue(item, ['rdtSubsName', 'rdt_subs_name']) || '-',
-        faultEquipName: readFieldValue(item, ['faultEquipName', 'fault_equip_name']) || '-',
-        outageReason: readFieldValue(item, ['outage_reason', 'outageReason']) || '-',
-      }
-    })
-    .sort((a, b) => String(b.beginTime).localeCompare(String(a.beginTime))),
-)
 
 const outageNatureOverviewCards = computed(() => {
-  const total = outageDetailRows.value.length
-  let plannedCount = 0
-  let faultCount = 0
-  let otherCount = 0
+  const summary = outageEventsSummaryData.value
+  const total = Math.max(safeNumber(summary?.totalEvents), 0)
+  const baseMap = new Map([
+    ['planned', { key: 'planned', label: '计划停电', count: 0, rate: 0, rateText: '0.0%' }],
+    ['fault', { key: 'fault', label: '故障停电', count: 0, rate: 0, rateText: '0.0%' }],
+    ['other', { key: 'other', label: '其他', count: 0, rate: 0, rateText: '0.0%' }],
+  ])
 
-  outageDetailRows.value.forEach((item) => {
-    if (item.outageNature === '计划停电') {
-      plannedCount += 1
+  const ratioList = Array.isArray(summary?.natureRatio) ? summary.natureRatio : []
+  ratioList.forEach((item) => {
+    const key = normalizeOutageNatureCode(item?.code || item?.name || item?.outageNature)
+    if (!key) {
       return
     }
-    if (item.outageNature === '故障停电') {
-      faultCount += 1
+
+    const count = Math.max(safeNumber(item?.value), 0)
+    const rate = Number.isFinite(Number(item?.percent))
+      ? Number(Number(item.percent).toFixed(1))
+      : total > 0
+        ? Number(((count / total) * 100).toFixed(1))
+        : 0
+    const current = baseMap.get(key)
+    if (!current) {
       return
     }
-    otherCount += 1
-  })
 
-  const toCard = (key, label, count) => {
-    const rate = total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0
-    return {
-      key,
-      label,
+    baseMap.set(key, {
+      ...current,
       count,
       rate,
       rateText: `${rate.toFixed(1)}%`,
-    }
-  }
+    })
+  })
 
-  return [toCard('planned', '计划停电', plannedCount), toCard('fault', '故障停电', faultCount), toCard('other', '其他', otherCount)]
+  return ['planned', 'fault', 'other'].map((key) => baseMap.get(key))
 })
 
 const outageNatureOverview = computed(() => {
@@ -1516,16 +2204,21 @@ const outageNatureOverview = computed(() => {
     planned,
     fault,
     other,
-    total: outageDetailRows.value.length,
+    total: Math.max(safeNumber(outageEventsSummaryData.value?.totalEvents), 0),
     pieBackground: `conic-gradient(#4bfbac 0% ${firstEnd}%, #ff5e63 ${firstEnd}% ${secondEnd}%, #3a8dff ${secondEnd}% ${thirdEnd}%, rgba(90, 128, 168, 0.34) ${thirdEnd}% 100%)`,
   }
 })
 
 const outageRestoreOverview = computed(() => {
-  const total = outageDetailRows.value.length
-  const restoredCount = outageDetailRows.value.filter((item) => item.status === '已复电').length
-  const unrestoredCount = Math.max(total - restoredCount, 0)
-  const restoredRate = total > 0 ? Number(((restoredCount / total) * 100).toFixed(1)) : 0
+  const summary = outageEventsSummaryData.value
+  const total = Math.max(safeNumber(summary?.totalEvents), safeNumber(summary?.restoredEvents) + safeNumber(summary?.unrestoredEvents))
+  const restoredCount = Math.max(safeNumber(summary?.restoredEvents), 0)
+  const unrestoredCount = Math.max(safeNumber(summary?.unrestoredEvents), Math.max(total - restoredCount, 0))
+  const restoredRate = Number.isFinite(Number(summary?.restoredRate))
+    ? Number(Number(summary.restoredRate).toFixed(1))
+    : total > 0
+      ? Number(((restoredCount / total) * 100).toFixed(1))
+      : 0
 
   return {
     total,
@@ -1540,26 +2233,14 @@ const outageRestoreOverview = computed(() => {
   }
 })
 
-const filteredOutageDetailRows = computed(() => {
-  const keyword = outageDetailSearchKeyword.value.trim().toLowerCase()
-  const selectedNature = outageDetailSelectedNature.value
-
-  return outageDetailRows.value.filter((item) => {
-    const outageNumber = String(item.outageNumber || '').toLowerCase()
-    const matchedKeyword = !keyword || outageNumber.includes(keyword)
-    const matchedNature = !selectedNature || item.outageNature === selectedNature
-    return matchedKeyword && matchedNature
-  })
-})
-
 const outageDetailTotalPages = computed(() =>
-  Math.max(Math.ceil(filteredOutageDetailRows.value.length / outageDetailRowsPerPage.value), 1),
+  Math.max(
+    Math.ceil(Math.max(safeNumber(outageDetailTotal.value), 0) / Math.max(safeNumber(outageDetailRowsPerPage.value), OUTAGE_DETAIL_MIN_PAGE_SIZE)),
+    1,
+  ),
 )
 
-const pagedOutageDetailRows = computed(() => {
-  const start = (outageDetailCurrentPage.value - 1) * outageDetailRowsPerPage.value
-  return filteredOutageDetailRows.value.slice(start, start + outageDetailRowsPerPage.value)
-})
+const pagedOutageDetailRows = computed(() => outageDetailRows.value)
 
 const recalcOutageDetailRowsPerPage = () => {
   if (!showOutageDetailPage.value) {
@@ -1584,6 +2265,15 @@ const recalcOutageDetailRowsPerPage = () => {
 
   if (nextSize !== outageDetailRowsPerPage.value) {
     outageDetailRowsPerPage.value = nextSize
+    outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+    if (showOutageDetailPage.value && !suppressOutageDetailAutoReload) {
+      void loadRightPanelOutageEvents({
+        beginTime: toBackendDateTime(queryStartTime.value),
+        endTime: toBackendDateTime(queryEndTime.value),
+        page: OUTAGE_DETAIL_DEFAULT_PAGE,
+        perPage: nextSize,
+      })
+    }
   }
 }
 
@@ -1654,9 +2344,10 @@ const outageSummary = computed(() => {
   const remote = outageScopeSummaryData.value
   if (remote && typeof remote === 'object') {
     const restoredEvents = Math.max(safeNumber(remote.restoredEvents), 0)
-    const unrestoredEvents = Math.max(safeNumber(remote.unrestoredEvents), 0)
+    const unrestoredEvents = Math.max(safeNumber(remote.unrestoredEvents ?? remote.activeEvents), 0)
+    const totalEvents = Math.max(safeNumber(remote.totalEvents), restoredEvents + unrestoredEvents)
     return {
-      totalEvents: restoredEvents + unrestoredEvents,
+      totalEvents,
       totalUsers: Math.max(safeNumber(remote.affectedUsers), 0),
       totalEquipments: Math.max(safeNumber(remote.affectedEquipment), 0),
       activeEvents: unrestoredEvents,
@@ -2056,90 +2747,7 @@ const keyUsers = computed(() => {
 })
 
 const outageRangeChains = computed(() => {
-  const chainMap = new Map()
-  const chainList = []
-
-  const toDisplayText = (value) => {
-    const text = String(value ?? '').trim()
-    return text || '-'
-  }
-
-  filteredFaultOutageEvents.value.forEach((event, index) => {
-    const outageNumber = String(extractOutageNumberParam(event) || '').trim()
-    const eventKey = outageNumber || String(getEventId(event) || `event-${index}`)
-
-    if (chainMap.has(eventKey)) {
-      return
-    }
-
-    const chain = {
-      key: eventKey,
-      outageNumber: outageNumber || '-',
-      rdtFeederName: toDisplayText(readFieldValue(event, ['rdtFeederName', 'rdt_feeder_name'])),
-      rdtSubsName: toDisplayText(readFieldValue(event, ['rdtSubsName', 'rdt_subs_name'])),
-      maintGroupName: toDisplayText(readFieldValue(event, ['maintGroupName', 'maint_group_name'])),
-      importantUsers: new Set(),
-      sensitiveUsers: new Set(),
-      normalUsers: 0,
-    }
-
-    chainMap.set(eventKey, chain)
-    chainList.push(chain)
-  })
-
-  outageUsersBySelectedCounty.value.forEach((item) => {
-    const record = normalizeUserRecord(item)
-    const cityName = String(
-      readFieldValue(record, ['rdtCityName', 'rdt_city_name', 'cityName', 'city_name']) || '',
-    ).trim()
-    if (cityName !== tagAndKeyUserTargetCityName) {
-      return
-    }
-    const outageNumber = String(extractOutageNumberParam(record) || '').trim()
-    if (!outageNumber) {
-      return
-    }
-
-    const chain = chainMap.get(outageNumber)
-    if (!chain) {
-      return
-    }
-
-    const classified = classifyUserByScore(record)
-    const consName = String(readFieldValue(record, ['consName', 'cons_name', 'name', 'userName']) || '').trim()
-    const consNo = String(readFieldValue(record, ['consNo', 'cons_no', 'userNo', 'userId']) || '').trim()
-    const userName = consName || consNo || '-'
-
-    if (classified.isSensitive) {
-      chain.sensitiveUsers.add(userName)
-      return
-    }
-
-    if (classified.isImportant) {
-      chain.importantUsers.add(userName)
-      return
-    }
-
-    chain.normalUsers += 1
-  })
-
-  return chainList.map((item) => {
-    const importantUsers = Array.from(item.importantUsers)
-    const sensitiveUsers = Array.from(item.sensitiveUsers)
-
-    return {
-      key: item.key,
-      outageNumber: item.outageNumber,
-      rdtFeederName: item.rdtFeederName,
-      rdtSubsName: item.rdtSubsName,
-      maintGroupName: item.maintGroupName,
-      importantUsers,
-      sensitiveUsers,
-      importantUserText: importantUsers.length > 0 ? importantUsers.join('、') : '无',
-      sensitiveUserText: sensitiveUsers.length > 0 ? sensitiveUsers.join('、') : '无',
-      normalUserCount: item.normalUsers,
-    }
-  })
+  return outageRangeChainsData.value
 })
 
 const outageNatureText = (value) => {
@@ -2216,10 +2824,7 @@ const buildKeyUserDetailBasePayload = () => {
     beginTime,
     endTime,
   }
-  const countyId = getCountyIdByRegionName(selectedRegion.value)
-  if (countyId) {
-    payload.countyId = countyId
-  }
+  appendCountyOrCityScope(payload)
 
   if (countyUserListSnapshotDate) {
     payload.snapshotDate = countyUserListSnapshotDate
@@ -3025,10 +3630,33 @@ const openUserDetailPage = () => {
 
 const openOutageRangeAssessmentPage = () => {
   showOutageRangeAssessmentPage.value = true
+  outageRangeChainsCurrentPage.value = 1
+  void loadRightPanelOutageChains({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page: 1,
+  })
 }
 
 const closeOutageRangeAssessmentPage = () => {
   showOutageRangeAssessmentPage.value = false
+  outageRangeChainsRequestId += 1
+}
+
+const goOutageRangeAssessmentPage = (page) => {
+  const targetPage = Math.max(1, Math.round(safeNumber(page) || 1))
+  if (!showOutageRangeAssessmentPage.value) {
+    return
+  }
+  if (targetPage === outageRangeChainsCurrentPage.value) {
+    return
+  }
+  outageRangeChainsCurrentPage.value = targetPage
+  void loadRightPanelOutageChains({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page: targetPage,
+  })
 }
 
 const reloadKeyUserDetailList = () => {
@@ -3192,26 +3820,48 @@ const jumpToUserDetailPage = () => {
 }
 
 const openOutageDetailPage = () => {
+  suppressOutageDetailAutoReload = true
   showOutageDetailPage.value = true
   outageDetailSearchInput.value = ''
   outageDetailSearchKeyword.value = ''
   outageDetailSelectedNature.value = ''
   outageDetailJumpPageInput.value = ''
-  outageDetailCurrentPage.value = 1
+  outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+  outageEventsSummaryData.value = null
   closeOutageDetailModal()
-  nextTick(() => {
-    observeOutageDetailLayout()
+  void loadRightPanelOutageEventsSummary({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+  })
+  nextTick(async () => {
     syncOutageDetailLayout()
+    try {
+      await loadRightPanelOutageEvents({
+        beginTime: toBackendDateTime(queryStartTime.value),
+        endTime: toBackendDateTime(queryEndTime.value),
+        page: OUTAGE_DETAIL_DEFAULT_PAGE,
+        perPage: outageDetailRowsPerPage.value,
+      })
+    } finally {
+      suppressOutageDetailAutoReload = false
+      observeOutageDetailLayout()
+    }
   })
 }
 
 const closeOutageDetailModal = () => {
+  outageEventDetailRequestId += 1
   outageDetailModalVisible.value = false
   selectedOutageDetail.value = null
 }
 
 const closeOutageDetailPage = () => {
+  suppressOutageDetailAutoReload = false
   showOutageDetailPage.value = false
+  outageEventDetailRequestId += 1
+  outageEventsSummaryRequestId += 1
+  outageEventsSummaryData.value = null
+  outageDetailListRequestId += 1
   if (outageDetailLayoutObserver) {
     outageDetailLayoutObserver.disconnect()
     outageDetailLayoutObserver = null
@@ -3219,10 +3869,25 @@ const closeOutageDetailPage = () => {
   closeOutageDetailModal()
 }
 
-const openOutageDetailModal = (item) => {
-  selectedOutageDetail.value = item
+const openOutageDetailModal = async (item) => {
+  selectedOutageDetail.value = mapOutageEventDetailForModal(item, item)
   outageDetailModalVisible.value = true
   locateOutageFeederOnMapFrame(item)
+  const requestId = ++outageEventDetailRequestId
+  const outageNumber = String(item?.outageNumber || '').trim()
+  if (outageNumber) {
+    try {
+      const response = await queryRightPanelOutageEventDetail({ outageNumber })
+      if (requestId === outageEventDetailRequestId && outageDetailModalVisible.value) {
+        const remoteDetailData = resolveOutageEventDetailResponseData(response)
+        if (remoteDetailData) {
+          selectedOutageDetail.value = mapOutageEventDetailForModal(remoteDetailData, item)
+        }
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
 
   const targetId = String(item?.id || '').trim()
   let matchedEvent = null
@@ -3265,7 +3930,17 @@ const openOutageDetailModal = (item) => {
 
 const applyOutageDetailSearch = () => {
   outageDetailSearchKeyword.value = outageDetailSearchInput.value.trim()
-  outageDetailCurrentPage.value = 1
+  outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+  void loadRightPanelOutageEventsSummary({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+  })
+  void loadRightPanelOutageEvents({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page: OUTAGE_DETAIL_DEFAULT_PAGE,
+    perPage: outageDetailRowsPerPage.value,
+  })
 }
 
 const goOutageDetailPage = (page) => {
@@ -3273,6 +3948,12 @@ const goOutageDetailPage = (page) => {
     return
   }
   outageDetailCurrentPage.value = page
+  void loadRightPanelOutageEvents({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page,
+    perPage: outageDetailRowsPerPage.value,
+  })
 }
 
 const jumpToOutageDetailPage = () => {
@@ -3345,9 +4026,9 @@ watch(
   { immediate: true },
 )
 
-watch(filteredOutageDetailRows, (rows) => {
+watch(outageDetailRows, (rows) => {
   if (rows.length === 0) {
-    outageDetailCurrentPage.value = 1
+    outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
     closeOutageDetailModal()
     nextTick(() => {
       syncOutageDetailLayout()
@@ -3387,6 +4068,17 @@ watch(selectedRegion, (regionName) => {
     beginTime: toBackendDateTime(queryStartTime.value),
     endTime: toBackendDateTime(queryEndTime.value),
   })
+  faultSummaryData.value = null
+  outageScopeSummaryData.value = null
+  void loadRightPanelFaultLocationSummary({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    dimension: 'feeder',
+  })
+  void loadRightPanelOutageScopeSummary({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+  })
   if (spaceDistributionDetailVisible.value) {
     void loadCountyEquipmentStatsSummary({
       beginTime: toBackendDateTime(queryStartTime.value),
@@ -3402,6 +4094,29 @@ watch(selectedRegion, (regionName) => {
     })
   }
 
+  if (showOutageDetailPage.value) {
+    outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+    void loadRightPanelOutageEventsSummary({
+      beginTime: toBackendDateTime(queryStartTime.value),
+      endTime: toBackendDateTime(queryEndTime.value),
+    })
+    void loadRightPanelOutageEvents({
+      beginTime: toBackendDateTime(queryStartTime.value),
+      endTime: toBackendDateTime(queryEndTime.value),
+      page: OUTAGE_DETAIL_DEFAULT_PAGE,
+      perPage: outageDetailRowsPerPage.value,
+    })
+  }
+
+  if (showOutageRangeAssessmentPage.value) {
+    outageRangeChainsCurrentPage.value = 1
+    void loadRightPanelOutageChains({
+      beginTime: toBackendDateTime(queryStartTime.value),
+      endTime: toBackendDateTime(queryEndTime.value),
+      page: 1,
+    })
+  }
+
   if (showKeyUserDetailPage.value) {
     keyUserDetailCurrentPage.value = 1
     void loadKeyUserDetailStats()
@@ -3410,7 +4125,16 @@ watch(selectedRegion, (regionName) => {
 })
 
 watch(outageDetailSelectedNature, () => {
-  outageDetailCurrentPage.value = 1
+  outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+  if (!showOutageDetailPage.value) {
+    return
+  }
+  void loadRightPanelOutageEvents({
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page: OUTAGE_DETAIL_DEFAULT_PAGE,
+    perPage: outageDetailRowsPerPage.value,
+  })
 })
 
 watch([showOutageDetailPage, outageDetailGridBodyRef, outageDetailPaginationRef, outageDetailPageJumpRef], ([visible]) => {
@@ -3497,6 +4221,33 @@ watch(
 const applyTimeFilter = async () => {
   await loadDashboardData()
   activeMapEvent.value = null
+
+  if (showOutageDetailPage.value) {
+    outageDetailCurrentPage.value = OUTAGE_DETAIL_DEFAULT_PAGE
+    const beginTime = toBackendDateTime(queryStartTime.value)
+    const endTime = toBackendDateTime(queryEndTime.value)
+    await Promise.all([
+      loadRightPanelOutageEventsSummary({
+        beginTime,
+        endTime,
+      }),
+      loadRightPanelOutageEvents({
+        beginTime,
+        endTime,
+        page: OUTAGE_DETAIL_DEFAULT_PAGE,
+        perPage: outageDetailRowsPerPage.value,
+      }),
+    ])
+  }
+
+  if (showOutageRangeAssessmentPage.value) {
+    outageRangeChainsCurrentPage.value = 1
+    await loadRightPanelOutageChains({
+      beginTime: toBackendDateTime(queryStartTime.value),
+      endTime: toBackendDateTime(queryEndTime.value),
+      page: 1,
+    })
+  }
 
   if (showKeyUserDetailPage.value) {
     keyUserDetailCurrentPage.value = 1
@@ -4111,7 +4862,7 @@ onBeforeUnmount(() => {
                 :outage-detail-search-input="outageDetailSearchInput"
                 :outage-detail-selected-nature="outageDetailSelectedNature"
                 :paged-outage-detail-rows="pagedOutageDetailRows"
-                :filtered-outage-detail-rows-length="filteredOutageDetailRows.length"
+                :filtered-outage-detail-rows-length="outageDetailTotal"
                 :outage-detail-page-buttons="outageDetailPageButtons"
                 :outage-detail-current-page="outageDetailCurrentPage"
                 :outage-detail-jump-page-input="outageDetailJumpPageInput"
@@ -4123,6 +4874,7 @@ onBeforeUnmount(() => {
                 :outage-detail-page-jump-ref-setter="setOutageDetailPageJumpRef"
                 @update:selected-fault-county="selectedRegion = $event"
                 @open-outage-detail="openOutageDetailPage"
+                @fault-mode-change="handleFaultLocationModeChange"
                 @close-outage-detail="closeOutageDetailPage"
                 @update:outage-detail-search-input="outageDetailSearchInput = $event"
                 @apply-outage-detail-search="applyOutageDetailSearch"
@@ -4137,8 +4889,11 @@ onBeforeUnmount(() => {
               <OutageRangeAssessmentCard
                 :outage-summary="outageSummary"
                 :outage-range-chains="outageRangeChains"
+                :outage-range-total="outageRangeChainsTotal"
+                :outage-range-current-page="outageRangeChainsCurrentPage"
                 :show-outage-range-assessment-page="showOutageRangeAssessmentPage"
                 @open-outage-range-detail="openOutageRangeAssessmentPage"
+                @go-outage-range-page="goOutageRangeAssessmentPage"
                 @close-outage-range-detail="closeOutageRangeAssessmentPage"
               />
             </template>

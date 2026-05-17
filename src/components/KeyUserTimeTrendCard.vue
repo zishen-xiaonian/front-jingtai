@@ -67,6 +67,8 @@ const CHART_PADDING = {
 
 const DETAIL_PAGE_SIZE = 7
 const DETAIL_PAGE_MAX_BUTTONS = 7
+const defaultTangshanCityId = '1100F3DE22316FADE050007F01006CBE'
+const countyListCityId = import.meta.env.VITE_TANGSHAN_CITY_ID || defaultTangshanCityId
 
 const detailPageVisible = ref(false)
 const detailSearchInput = ref('')
@@ -781,6 +783,8 @@ const loadDetailTableRows = async (targetPage = detailCurrentPage.value) => {
   const countyId = String(props.countyId || '').trim()
   if (countyId) {
     payload.countyId = countyId
+  } else if (countyListCityId) {
+    payload.cityId = countyListCityId
   }
 
   const keyword = detailSearchKeyword.value.trim()

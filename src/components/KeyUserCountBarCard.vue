@@ -31,6 +31,7 @@ const props = defineProps({
 const emit = defineEmits(['open-detail-page', 'close-detail-page'])
 
 const toCount = (value) => Math.max(0, Number(value) || 0)
+const TREND_MIN_TRACK_PERCENT = 16
 
 const normalizedRows = computed(() =>
   props.rows.map((item, index) => {
@@ -52,9 +53,10 @@ const displayRows = computed(() => {
   const base = maxTotal.value || 1
   return normalizedRows.value.map((item) => {
     const total = item.totalCount
+    const rawTrackPercent = total > 0 ? (total / base) * 100 : 0
     return {
       ...item,
-      trackPercent: total > 0 ? (total / base) * 100 : 0,
+      trackPercent: total > 0 ? Math.max(rawTrackPercent, TREND_MIN_TRACK_PERCENT) : 0,
       importantPercent: total > 0 ? (item.importantCount / total) * 100 : 0,
       sensitivePercent: total > 0 ? (item.sensitiveCount / total) * 100 : 0,
     }
@@ -70,7 +72,7 @@ const buildSegmentStyle = (percent, count) => {
 
   return {
     width: `${percent}%`,
-    minWidth: '24px',
+    minWidth: '28px',
   }
 }
 

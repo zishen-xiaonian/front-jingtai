@@ -87,6 +87,7 @@ const props = defineProps({
 const emit = defineEmits([
   'update:selected-fault-county',
   'open-outage-detail',
+  'fault-mode-change',
   'close-outage-detail',
   'update:outage-detail-search-input',
   'apply-outage-detail-search',
@@ -131,6 +132,7 @@ const activeModeSummary = computed(() => {
     key: activeFaultMode.value,
     label: modeOptions.find((item) => item.key === activeFaultMode.value)?.label || '线路',
     total: 0,
+    matchedEvents: 0,
     bars: [
       { key: 'danger', colorLabel: '红色', count: 0 },
       { key: 'warning', colorLabel: '黄色', count: 0 },
@@ -156,7 +158,11 @@ const activeModeBars = computed(() => {
 })
 
 const setFaultMode = (modeKey) => {
+  if (activeFaultMode.value === modeKey) {
+    return
+  }
   activeFaultMode.value = modeKey
+  emit('fault-mode-change', modeKey)
 }
 </script>
 
@@ -200,7 +206,7 @@ const setFaultMode = (modeKey) => {
     </div>
 
     <p class="event-meta">
-      当前{{ activeModeSummary.label }}数量：{{ activeModeSummary.total }}，当前区域：{{ props.selectedFaultCounty || '-' }}，停电事件 {{ props.filteredFaultOutageEventsLength }} 条
+      当前{{ activeModeSummary.label }}数量：{{ activeModeSummary.total }}，当前区域：{{ props.selectedFaultCounty || '-' }}，停电事件 {{ activeModeSummary.matchedEvents ?? props.filteredFaultOutageEventsLength }} 条
     </p>
   </article>
 
@@ -339,13 +345,11 @@ const setFaultMode = (modeKey) => {
           <p><span>停电开始时间：</span>{{ props.selectedOutageDetail.beginTime }}</p>
           <p><span>状态：</span>{{ props.selectedOutageDetail.status }}</p>
           <p><span>停电结束时间：</span>{{ props.selectedOutageDetail.endTime }}</p>
-          <p><span>供电公司：</span>{{ props.selectedOutageDetail.maintGroupName }}</p>
           <p><span>区县单位：</span>{{ props.selectedOutageDetail.countyName }}</p>
           <p><span>影响户数：</span>{{ props.selectedOutageDetail.affectedConsCnt }}</p>
           <p><span>停电线路：</span>{{ props.selectedOutageDetail.rdtFeederName }}</p>
           <p><span>所属变电站：</span>{{ props.selectedOutageDetail.rdtSubsName }}</p>
           <p><span>设备名称：</span>{{ props.selectedOutageDetail.faultEquipName }}</p>
-          <p><span>停电原因：</span>{{ props.selectedOutageDetail.outageReason }}</p>
         </div>
       </article>
     </div>

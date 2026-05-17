@@ -6,7 +6,7 @@ const API_BASE = rawApiBase.replace('/proxy/3/', '/').replace('/proxy/', '/')
 
 const OUTAGE_LIST_TIMEOUT = 30000
 const OUTAGE_USER_DETAIL_TIMEOUT = 45000
-const DEFAULT_STATS_TIMEOUT = 20000
+const DEFAULT_STATS_TIMEOUT = 60000
 
 const COUNTY_LIST_API = import.meta.env.VITE_COUNTY_LIST_API || '/api/county/list'
 const COUNTY_STATS_API = import.meta.env.VITE_COUNTY_STATS_API || '/api/county/stats'
@@ -35,6 +35,20 @@ const SPATIAL_EQUIPMENT_LIST_API = import.meta.env.VITE_SPATIAL_EQUIPMENT_LIST_A
 const SPATIAL_EQUIPMENT_DETAIL_API = import.meta.env.VITE_SPATIAL_EQUIPMENT_DETAIL_API || '/api/spatial/equipment-detail'
 
 const FAULT_EQUIPMENT_LIST_API = import.meta.env.VITE_FAULT_EQUIPMENT_LIST_API || '/api/fault/equipment-list'
+const RIGHT_PANEL_COUNTY_WARNINGS_API =
+  import.meta.env.VITE_RIGHT_PANEL_COUNTY_WARNINGS_API || '/api/right-panel/county-warnings'
+const RIGHT_PANEL_FAULT_LOCATION_API =
+  import.meta.env.VITE_RIGHT_PANEL_FAULT_LOCATION_API || '/api/right-panel/fault-location'
+const RIGHT_PANEL_OUTAGE_SCOPE_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_SCOPE_API || '/api/right-panel/outage-scope'
+const RIGHT_PANEL_OUTAGE_EVENTS_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENTS_API || '/api/right-panel/outage-events'
+const RIGHT_PANEL_OUTAGE_EVENTS_SUMMARY_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENTS_SUMMARY_API || '/api/right-panel/outage-events-summary'
+const RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API || '/api/right-panel/outage-event-detail'
+const RIGHT_PANEL_OUTAGE_CHAINS_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_CHAINS_API || '/api/right-panel/outage-chains'
 
 export const queryOutageIndex = (params) => postJson(`${API_BASE}/queryOutageIndex`, params)
 
@@ -140,3 +154,40 @@ export const queryFaultEquipmentList = (params) =>
   postJson(FAULT_EQUIPMENT_LIST_API, params, {
     timeout: DEFAULT_STATS_TIMEOUT,
   })
+
+export const queryRightPanelCountyWarnings = (params) =>
+  postJson(RIGHT_PANEL_COUNTY_WARNINGS_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelFaultLocation = (params) =>
+  postJson(RIGHT_PANEL_FAULT_LOCATION_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOutageScope = (params) =>
+  postJson(RIGHT_PANEL_OUTAGE_SCOPE_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOutageEvents = (params) =>
+  postJson(RIGHT_PANEL_OUTAGE_EVENTS_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOutageEventsSummary = (params) =>
+  postJson(RIGHT_PANEL_OUTAGE_EVENTS_SUMMARY_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOutageEventDetail = (params) =>
+  postJson(RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOutageChains = (params) =>
+  postJson(RIGHT_PANEL_OUTAGE_CHAINS_API, params, {
+    timeout: DEFAULT_STATS_TIMEOUT,
+  })
+
+export const queryRightPanelOverview = () => Promise.resolve({ data: {} })

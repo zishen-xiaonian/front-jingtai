@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   outageSummary: {
@@ -10,47 +10,44 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  outageRangeTotal: {
+    type: Number,
+    default: 0,
+  },
+  outageRangeCurrentPage: {
+    type: Number,
+    default: 1,
+  },
   showOutageRangeAssessmentPage: {
     type: Boolean,
     default: false,
   },
 })
 
-const emit = defineEmits(['open-outage-range-detail', 'close-outage-range-detail'])
+const emit = defineEmits(['open-outage-range-detail', 'go-outage-range-page', 'close-outage-range-detail'])
 
 const OUTAGE_RANGE_DEFAULT_PAGE_SIZE = 4
 const OUTAGE_RANGE_MAX_PAGE_BUTTONS = 6
-const OUTAGE_RANGE_MIN_CARD_HEIGHT = 136
-const OUTAGE_RANGE_CARD_GAP = 8
 
-const outageRangeChainListRef = ref(null)
-const outageRangeCurrentPage = ref(1)
 const outageRangeJumpPageInput = ref('')
-const outageRangePageSize = ref(OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
-
-let outageRangeLayoutObserver = null
+const outageRangeDetailVisible = ref(false)
+const selectedOutageRangeChain = ref(null)
 
 const openDetailPage = () => {
   emit('open-outage-range-detail')
 }
 
 const outageRangeTotalPages = computed(() => {
-  const total = props.outageRangeChains.length
+  const total = Math.max(Number(props.outageRangeTotal || 0), 0)
   if (total <= 0) {
     return 1
   }
-  return Math.ceil(total / outageRangePageSize.value)
+  return Math.ceil(total / OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
 })
 
-const outageRangePageStartIndex = computed(() => (outageRangeCurrentPage.value - 1) * outageRangePageSize.value)
+const outageRangePageStartIndex = computed(() => (props.outageRangeCurrentPage - 1) * OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
 
-const outageRangePagedChains = computed(() => {
-  const start = outageRangePageStartIndex.value
-  const end = start + outageRangePageSize.value
-  return props.outageRangeChains.slice(start, end)
-})
-
-const outageRangeRenderedRows = computed(() => Math.max(1, outageRangePagedChains.value.length))
+const outageRangeRenderedRows = computed(() => Math.max(1, props.outageRangeChains.length))
 
 const outageRangePageButtons = computed(() => {
   const total = outageRangeTotalPages.value
@@ -59,8 +56,8 @@ const outageRangePageButtons = computed(() => {
   }
 
   const half = Math.floor(OUTAGE_RANGE_MAX_PAGE_BUTTONS / 2)
-  let start = outageRangeCurrentPage.value - half
-  let end = outageRangeCurrentPage.value + half
+  let start = props.outageRangeCurrentPage - half
+  let end = props.outageRangeCurrentPage + half
 
   if (start < 1) {
     start = 1
@@ -79,56 +76,11 @@ const outageRangePageButtons = computed(() => {
   return pages
 })
 
-const syncOutageRangePageSize = () => {
-  const listEl = outageRangeChainListRef.value
-  if (!listEl) {
-    return
-  }
-
-  const usableHeight = listEl.clientHeight
-  if (usableHeight <= 0) {
-    return
-  }
-
-  const nextPageSize = Math.max(1, Math.floor((usableHeight + OUTAGE_RANGE_CARD_GAP) / (OUTAGE_RANGE_MIN_CARD_HEIGHT + OUTAGE_RANGE_CARD_GAP)))
-  if (nextPageSize !== outageRangePageSize.value) {
-    outageRangePageSize.value = nextPageSize
-  }
-}
-
-const observeOutageRangeLayout = () => {
-  if (typeof window === 'undefined' || !window.ResizeObserver) {
-    return
-  }
-
-  const listEl = outageRangeChainListRef.value
-  if (!listEl) {
-    return
-  }
-
-  if (outageRangeLayoutObserver) {
-    outageRangeLayoutObserver.disconnect()
-  }
-
-  outageRangeLayoutObserver = new window.ResizeObserver(() => {
-    syncOutageRangePageSize()
-  })
-
-  outageRangeLayoutObserver.observe(listEl)
-}
-
-const stopObservingOutageRangeLayout = () => {
-  if (outageRangeLayoutObserver) {
-    outageRangeLayoutObserver.disconnect()
-    outageRangeLayoutObserver = null
-  }
-}
-
 const goOutageRangePage = (page) => {
   if (page < 1 || page > outageRangeTotalPages.value) {
     return
   }
-  outageRangeCurrentPage.value = page
+  emit('go-outage-range-page', page)
 }
 
 const updateOutageRangeJumpPageInput = (event) => {
@@ -151,49 +103,27 @@ const jumpToOutageRangePage = () => {
   outageRangeJumpPageInput.value = String(target)
 }
 
-watch(
-  () => outageRangeTotalPages.value,
-  (total) => {
-    if (outageRangeCurrentPage.value > total) {
-      outageRangeCurrentPage.value = total
-    }
-  },
-  { immediate: true },
-)
+const openOutageRangeChainDetail = (item) => {
+  selectedOutageRangeChain.value = item || null
+  outageRangeDetailVisible.value = true
+}
 
-watch(
-  () => props.outageRangeChains,
-  () => {
-    outageRangeCurrentPage.value = 1
-    outageRangeJumpPageInput.value = ''
-    nextTick(() => {
-      syncOutageRangePageSize()
-    })
-  },
-  { deep: true },
-)
+const closeOutageRangeChainDetail = () => {
+  outageRangeDetailVisible.value = false
+  selectedOutageRangeChain.value = null
+}
 
 watch(
   () => props.showOutageRangeAssessmentPage,
   (visible) => {
     if (visible) {
-      outageRangeCurrentPage.value = 1
       outageRangeJumpPageInput.value = ''
-      nextTick(() => {
-        syncOutageRangePageSize()
-        observeOutageRangeLayout()
-      })
-      return
+    } else {
+      closeOutageRangeChainDetail()
     }
-
-    stopObservingOutageRangeLayout()
   },
   { immediate: true },
 )
-
-onBeforeUnmount(() => {
-  stopObservingOutageRangeLayout()
-})
 </script>
 
 <template>
@@ -234,31 +164,50 @@ onBeforeUnmount(() => {
 
     <section v-if="props.outageRangeChains.length > 0" class="outage-range-chain-content">
       <section
-        ref="outageRangeChainListRef"
         class="outage-range-chain-list"
         :style="{ '--outage-range-rows': String(outageRangeRenderedRows) }"
       >
-        <article v-for="(item, index) in outageRangePagedChains" :key="item.key" class="outage-range-chain-card">
+        <article
+          v-for="(item, index) in props.outageRangeChains"
+          :key="item.key"
+          class="outage-range-chain-card"
+          role="button"
+          tabindex="0"
+          @click="openOutageRangeChainDetail(item)"
+          @keydown.enter.prevent="openOutageRangeChainDetail(item)"
+          @keydown.space.prevent="openOutageRangeChainDetail(item)"
+        >
           <h4 class="outage-range-chain-title">
-            【链路{{ outageRangePageStartIndex + index + 1 }}】停电事件编号（outageNumber）：{{ item.outageNumber }}
+            【链路{{ outageRangePageStartIndex + index + 1 }}】停电事件编号：{{ item.outageNumber }}
           </h4>
-          <p class="outage-range-chain-link">
-            馈线名称（{{ item.rdtFeederName }}） -> 变电站名称（{{ item.rdtSubsName }}） -> 所属供电所（{{ item.maintGroupName }}）
+          <p class="outage-range-chain-meta">
+            <span class="outage-range-meta-label">重要用户</span>
+            <span class="outage-range-count-pill">{{ item.importantUsers.length }}</span>
+            ：{{ item.importantUserText }}
           </p>
-          <p class="outage-range-chain-meta">重要用户（{{ item.importantUsers.length }}）：{{ item.importantUserText }}</p>
-          <p class="outage-range-chain-meta">敏感用户（{{ item.sensitiveUsers.length }}）：{{ item.sensitiveUserText }}</p>
-          <p class="outage-range-chain-meta">普通用户影响数量：{{ item.normalUserCount }}</p>
+          <p class="outage-range-chain-meta">
+            <span class="outage-range-meta-label">敏感用户</span>
+            <span class="outage-range-count-pill">{{ item.sensitiveUsers.length }}</span>
+            ：{{ item.sensitiveUserText }}
+          </p>
+          <p class="outage-range-chain-meta">
+            <span class="outage-range-meta-label">普通用户影响数量</span>
+            <span class="outage-range-count-pill">{{ item.normalUserCount }}</span>
+          </p>
+          <div class="outage-range-chain-actions">
+            <button type="button" class="detail-btn" @click.stop="openOutageRangeChainDetail(item)">详情</button>
+          </div>
         </article>
       </section>
 
       <footer class="user-detail-pagination outage-range-pagination">
-        <span class="outage-range-page-state">第 {{ outageRangeCurrentPage }} / {{ outageRangeTotalPages }} 页</span>
+        <span class="outage-range-page-state">第 {{ props.outageRangeCurrentPage }} / {{ outageRangeTotalPages }} 页</span>
         <button
           v-for="page in outageRangePageButtons"
           :key="`outage-range-page-${page}`"
           type="button"
           class="page-btn"
-          :class="{ active: page === outageRangeCurrentPage }"
+          :class="{ active: page === props.outageRangeCurrentPage }"
           @click="goOutageRangePage(page)"
         >
           {{ page }}
@@ -281,5 +230,22 @@ onBeforeUnmount(() => {
     </section>
 
     <p v-else class="empty-tip">当前暂无链路影响用户数据。</p>
+
+    <section
+      v-if="outageRangeDetailVisible && selectedOutageRangeChain"
+      class="user-detail-modal-mask"
+      @click.self="closeOutageRangeChainDetail"
+    >
+      <article class="user-detail-modal outage-range-detail-modal">
+        <button type="button" class="user-detail-modal-close" @click="closeOutageRangeChainDetail">×</button>
+        <h4>链路详情</h4>
+        <div class="user-detail-modal-content">
+          <p><span>停电事件编号：</span>{{ selectedOutageRangeChain.outageNumber || '-' }}</p>
+          <p><span>重要用户（{{ selectedOutageRangeChain.importantUsers?.length || 0 }}）：</span>{{ selectedOutageRangeChain.importantUserText || '无' }}</p>
+          <p><span>敏感用户（{{ selectedOutageRangeChain.sensitiveUsers?.length || 0 }}）：</span>{{ selectedOutageRangeChain.sensitiveUserText || '无' }}</p>
+          <p><span>普通用户影响数量：</span>{{ selectedOutageRangeChain.normalUserCount ?? 0 }}</p>
+        </div>
+      </article>
+    </section>
   </section>
 </template>
