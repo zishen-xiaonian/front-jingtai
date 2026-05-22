@@ -19,6 +19,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  outageFreqLoading: {
+    type: Boolean,
+    default: false,
+  },
   users: {
     type: Array,
     default: () => [],
@@ -50,6 +54,10 @@ const props = defineProps({
   importantLabel: {
     type: String,
     default: '重要用户',
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
 })
 const emit = defineEmits(['open-detail-page'])
@@ -727,11 +735,13 @@ const mapDetailTableRow = (record, index) => {
 
 const mapDetailOutageEvents = (outages) =>
   (Array.isArray(outages) ? outages : []).map((item, index) => {
+    const outageNumber = toText(readFieldValue(item, ['outageNumber', 'outage_number', 'eventNo', 'event_id', 'id']), '-')
     const beginTime = toText(readFieldValue(item, ['beginTime', 'begin_time', 'outageBeginTime']), '-')
     const endTimeRaw = toText(readFieldValue(item, ['endTime', 'end_time', 'outageEndTime']), '')
     const endTime = endTimeRaw || '未复电'
     return {
-      eventKey: `${beginTime}|${endTime}|${index + 1}`,
+      eventKey: `${outageNumber}|${beginTime}|${endTime}|${index + 1}`,
+      outageNumber,
       periodText: `${beginTime} ~ ${endTime}`,
       beginTime,
       endTime,
@@ -777,6 +787,7 @@ const loadDetailTableRows = async (targetPage = detailCurrentPage.value) => {
   const payload = {
     beginTime,
     endTime,
+    userLevel: 'key_sensitive',
     page: Math.max(1, Number(targetPage) || 1),
     perPage: DETAIL_PAGE_SIZE,
   }
@@ -1094,6 +1105,10 @@ watch(
             </text>
           </g>
         </svg>
+        <div v-if="props.loading" class="trend-loading">
+          <span class="trend-loading-spinner" aria-hidden="true"></span>
+          <span>数据加载中...</span>
+        </div>
       </div>
     </template>
 
@@ -1109,8 +1124,13 @@ watch(
           <div class="trend-detail-pie-content">
             <div class="tag-pie trend-detail-tag-pie" :style="{ background: importantOutagePieBackground }">
               <div class="tag-pie-center">
-                <strong>{{ importantOutageTotal }}</strong>
-                <span>重点用户</span>
+                <template v-if="props.outageFreqLoading">
+                  <strong class="trend-detail-pie-loading-text">数据加载中...</strong>
+                </template>
+                <template v-else>
+                  <strong>{{ importantOutageTotal }}</strong>
+                  <span>重点用户</span>
+                </template>
               </div>
             </div>
             <ul class="trend-detail-pie-legend">
@@ -1128,8 +1148,13 @@ watch(
           <div class="trend-detail-pie-content">
             <div class="tag-pie trend-detail-tag-pie" :style="{ background: sensitiveOutagePieBackground }">
               <div class="tag-pie-center">
-                <strong>{{ sensitiveOutageTotal }}</strong>
-                <span>敏感用户</span>
+                <template v-if="props.outageFreqLoading">
+                  <strong class="trend-detail-pie-loading-text">数据加载中...</strong>
+                </template>
+                <template v-else>
+                  <strong>{{ sensitiveOutageTotal }}</strong>
+                  <span>敏感用户</span>
+                </template>
               </div>
             </div>
             <ul class="trend-detail-pie-legend">
@@ -1246,7 +1271,7 @@ watch(
               <p v-else-if="selectedUserDetail.outageEvents.length === 0" class="empty-tip">当前时间段暂无停电记录。</p>
               <ul v-else>
                 <li v-for="event in selectedUserDetail.outageEvents" :key="event.eventKey">
-                  <strong>{{ event.periodText }}</strong>
+                  <strong>{{ event.outageNumber }}</strong>
                   <span>停电开始时间：{{ event.beginTime }}</span>
                   <span>复电时间：{{ event.endTime }}</span>
                 </li>
@@ -1330,12 +1355,42 @@ watch(
   margin-top: 10px;
   width: 100%;
   height: 220px;
+  position: relative;
 }
 
 .trend-chart {
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+.trend-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transform: translateY(-26px);
+  color: rgba(196, 231, 255, 0.82);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.trend-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 193, 245, 0.26);
+  border-top-color: #7ed8ff;
+  animation: trend-loading-spin 0.8s linear infinite;
+}
+
+@keyframes trend-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .trend-grid line {
@@ -1435,6 +1490,11 @@ watch(
 
 .trend-detail-pie-card {
   justify-items: stretch;
+}
+
+.trend-detail-pie-loading-text {
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .trend-detail-pie-content {

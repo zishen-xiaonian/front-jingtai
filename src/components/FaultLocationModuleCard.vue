@@ -18,6 +18,10 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  faultLocationLoading: {
+    type: Boolean,
+    default: false,
+  },
   showOutageDetailPage: {
     type: Boolean,
     default: false,
@@ -25,6 +29,10 @@ const props = defineProps({
   outageNatureOverview: {
     type: Object,
     required: true,
+  },
+  outageEventsSummaryLoading: {
+    type: Boolean,
+    default: false,
   },
   outageRestoreOverview: {
     type: Object,
@@ -69,6 +77,10 @@ const props = defineProps({
   outageDetailModalVisible: {
     type: Boolean,
     default: false,
+  },
+  outageDetailDimension: {
+    type: String,
+    default: 'feeder',
   },
   selectedOutageDetail: {
     type: Object,
@@ -207,6 +219,10 @@ const setFaultMode = (modeKey) => {
           </div>
         </div>
       </div>
+      <div v-if="props.faultLocationLoading" class="fault-location-loading">
+        <span class="fault-location-spinner" aria-hidden="true"></span>
+        <span>数据加载中...</span>
+      </div>
     </div>
 
     <p class="event-meta">
@@ -240,8 +256,13 @@ const setFaultMode = (modeKey) => {
         <div class="outage-nature-pie-wrap">
           <div class="outage-nature-pie" :style="{ background: props.outageNatureOverview.pieBackground }">
             <div class="outage-nature-pie-center">
-              <strong>{{ props.outageNatureOverview.total }}</strong>
-              <span>总停电事件</span>
+              <template v-if="props.outageEventsSummaryLoading">
+                <strong class="outage-nature-pie-loading-text">数据加载中...</strong>
+              </template>
+              <template v-else>
+                <strong>{{ props.outageNatureOverview.total }}</strong>
+                <span>总停电事件</span>
+              </template>
             </div>
           </div>
         </div>
@@ -357,8 +378,8 @@ const setFaultMode = (modeKey) => {
           <p><span>停电结束时间：</span>{{ props.selectedOutageDetail.endTime }}</p>
           <p><span>区县单位：</span>{{ props.selectedOutageDetail.countyName }}</p>
           <p><span>影响户数：</span>{{ props.selectedOutageDetail.affectedConsCnt }}</p>
-          <p><span>停电线路：</span>{{ props.selectedOutageDetail.rdtFeederName }}</p>
-          <p><span>所属变电站：</span>{{ props.selectedOutageDetail.rdtSubsName }}</p>
+          <p v-if="props.outageDetailDimension !== 'substation'"><span>停电线路：</span>{{ props.selectedOutageDetail.rdtFeederName }}</p>
+          <p v-if="props.outageDetailDimension !== 'feeder'"><span>所属变电站：</span>{{ props.selectedOutageDetail.rdtSubsName }}</p>
         </div>
       </article>
     </div>
@@ -526,5 +547,33 @@ const setFaultMode = (modeKey) => {
   font-size: 12px;
   line-height: 1;
   color: #bfd8ee;
+}
+
+.fault-location-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(196, 231, 255, 0.82);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.fault-location-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 193, 245, 0.26);
+  border-top-color: #7ed8ff;
+  animation: fault-location-spin 0.8s linear infinite;
+}
+
+@keyframes fault-location-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

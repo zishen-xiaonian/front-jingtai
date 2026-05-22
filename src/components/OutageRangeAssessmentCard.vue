@@ -6,6 +6,10 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  outageSummaryLoading: {
+    type: Boolean,
+    default: false,
+  },
   outageRangeChains: {
     type: Array,
     required: true,
@@ -28,7 +32,12 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['open-outage-range-detail', 'go-outage-range-page', 'close-outage-range-detail'])
+const emit = defineEmits([
+  'open-outage-range-detail',
+  'go-outage-range-page',
+  'close-outage-range-detail',
+  'open-outage-range-chain-detail',
+])
 
 const OUTAGE_RANGE_DEFAULT_PAGE_SIZE = 4
 const OUTAGE_RANGE_MAX_PAGE_BUTTONS = 6
@@ -110,6 +119,7 @@ const jumpToOutageRangePage = () => {
 const openOutageRangeChainDetail = (item) => {
   selectedOutageRangeChain.value = item || null
   outageRangeDetailVisible.value = true
+  emit('open-outage-range-chain-detail', item || null)
 }
 
 const closeOutageRangeChainDetail = () => {
@@ -132,7 +142,7 @@ watch(
 
 <template>
   <article
-    class="module-block module-clickable"
+    class="module-block module-clickable outage-range-summary-block"
     role="button"
     tabindex="0"
     @click="openDetailPage"
@@ -143,19 +153,35 @@ watch(
     <div class="summary-grid">
       <div class="summary-card">
         <p>已复电事件数</p>
-        <strong>{{ Math.max(Number(props.outageSummary.totalEvents || 0) - Number(props.outageSummary.activeEvents || 0), 0) }}</strong>
+        <strong v-if="props.outageSummaryLoading" class="outage-summary-loading">
+          <span class="outage-summary-spinner" aria-hidden="true"></span>
+          <span>数据加载中...</span>
+        </strong>
+        <strong v-else>{{ Math.max(Number(props.outageSummary.totalEvents || 0) - Number(props.outageSummary.activeEvents || 0), 0) }}</strong>
       </div>
       <div class="summary-card">
         <p>未复电事件数</p>
-        <strong>{{ props.outageSummary.activeEvents }}</strong>
+        <strong v-if="props.outageSummaryLoading" class="outage-summary-loading">
+          <span class="outage-summary-spinner" aria-hidden="true"></span>
+          <span>数据加载中...</span>
+        </strong>
+        <strong v-else>{{ props.outageSummary.activeEvents }}</strong>
       </div>
       <div class="summary-card">
         <p>影响设备</p>
-        <strong>{{ props.outageSummary.totalEquipments }}</strong>
+        <strong v-if="props.outageSummaryLoading" class="outage-summary-loading">
+          <span class="outage-summary-spinner" aria-hidden="true"></span>
+          <span>数据加载中...</span>
+        </strong>
+        <strong v-else>{{ props.outageSummary.totalEquipments }}</strong>
       </div>
       <div class="summary-card">
         <p>影响用户</p>
-        <strong>{{ props.outageSummary.totalUsers }}</strong>
+        <strong v-if="props.outageSummaryLoading" class="outage-summary-loading">
+          <span class="outage-summary-spinner" aria-hidden="true"></span>
+          <span>数据加载中...</span>
+        </strong>
+        <strong v-else>{{ props.outageSummary.totalUsers }}</strong>
       </div>
     </div>
   </article>
@@ -255,3 +281,53 @@ watch(
     </section>
   </section>
 </template>
+
+<style scoped>
+.outage-range-summary-block {
+  gap: 6px;
+  padding: 8px;
+}
+
+.outage-range-summary-block .summary-grid {
+  gap: 6px;
+}
+
+.outage-range-summary-block .summary-card {
+  padding: 6px 8px;
+}
+
+.outage-range-summary-block .summary-card p {
+  line-height: 1.1;
+}
+
+.outage-range-summary-block .summary-card strong {
+  margin-top: 4px;
+  font-size: 21px;
+}
+
+.outage-summary-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1;
+  color: #c4e7ff;
+  white-space: nowrap;
+}
+
+.outage-summary-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 193, 245, 0.26);
+  border-top-color: #7ed8ff;
+  animation: outage-summary-spin 0.8s linear infinite;
+}
+
+@keyframes outage-summary-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

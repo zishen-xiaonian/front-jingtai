@@ -83,6 +83,31 @@
             color: #ff1d1d;
             font-weight: 700;
         }
+
+        .outage-focus-marker {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            background: radial-gradient(circle at 35% 35%, #ffe07a, #ff8a00 68%, #e64b00);
+            box-shadow: 0 0 0 2px rgba(255, 138, 0, 0.45), 0 0 14px rgba(255, 102, 0, 0.5);
+            position: relative;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .outage-focus-marker::after {
+            content: "M";
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        }
     </style>
 </head>
 <body>
@@ -98,12 +123,21 @@
     const tangshanHighlightSourceId = "tangshan-highlight-source";
     const tangshanHighlightFillLayerId = "tangshan-highlight-fill-layer";
     const tangshanHighlightLineLayerId = "tangshan-highlight-line-layer";
+    const outageRangeSourceId = "outage-range-source";
+    const outageRangeFillLayerId = "outage-range-fill-layer";
+    const outageRangeLineLayerId = "outage-range-line-layer";
     const keyUserCountyMarkersMessageType = "KEY_USER_COUNTY_MARKERS";
     const keyUserCountyMarkersClearMessageType = "KEY_USER_COUNTY_MARKERS_CLEAR";
     const keyUserMapReadyMessageType = "KEY_USER_MAP_READY";
     const mapCountyFocusMessageType = "MAP_COUNTY_FOCUS";
     const mapOutageFeederLocateMessageType = "MAP_OUTAGE_FEEDER_LOCATE";
+    const mapOutageChainLocateMessageType = "MAP_OUTAGE_CHAIN_LOCATE";
+    const mapSpaceDeviceLocateMessageType = "MAP_SPACE_DEVICE_LOCATE";
     const defaultFeederDevType = "xl01";
+    const outageChainFeederDevType = "dkx";
+    const outageChainSubstationDevType = "zf01";
+    const outageChainProvinceId = "1100F3DE20806FADE050007F01006CBE";
+    const outageChainDistribution = 1;
     const defaultCenter = [118.180194, 39.630867];
     const defaultOrgId = "130200";
     const tangshanBoundaryGeoJson = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Tangshan"},"geometry":{"type":"Polygon","coordinates":[[[118.693001,39.148093],[118.796662,39.135402],[118.8579,39.162858],[118.897217,39.15149],[118.9511,39.178468],[118.885722,39.123966],[118.926311,39.123494],[119.096058,39.241975],[119.174185,39.335824],[119.27276,39.36361],[119.319034,39.429564],[119.269074,39.424208],[119.212322,39.46345],[119.071105,39.476395],[119.054579,39.45988],[119.013136,39.464671],[119.008124,39.50935],[118.956711,39.524164],[118.983298,39.538959],[118.938478,39.557565],[118.895147,39.547043],[118.861332,39.574775],[118.775124,39.764853],[118.82541,39.799431],[118.81682,39.825864],[118.884214,39.961774],[118.86569,40.059883],[118.918265,40.092203],[118.924767,40.149668],[118.906733,40.169675],[118.794501,40.204839],[118.743579,40.191767],[118.74376,40.210878],[118.571398,40.269821],[118.568946,40.287549],[118.532589,40.300603],[118.540016,40.361059],[118.558595,40.370267],[118.550895,40.385482],[118.571507,40.414621],[118.548407,40.422711],[118.503205,40.40335],[118.402668,40.41686],[118.39179,40.436371],[118.306598,40.419577],[118.277923,40.425721],[118.239658,40.464655],[118.158844,40.424409],[118.164891,40.396988],[118.121832,40.354662],[118.0793,40.353503],[118.070329,40.327027],[118.031629,40.30235],[117.807799,40.261914],[117.751501,40.229752],[117.694114,40.238173],[117.646242,40.205195],[117.575852,40.193192],[117.584115,40.171766],[117.650147,40.128183],[117.649584,40.091273],[117.668108,40.100921],[117.6749,40.082135],[117.697256,40.09484],[117.755587,40.079544],[117.776145,40.058936],[117.747905,40.047451],[117.744146,40.018433],[117.782447,40.023511],[117.796303,39.99863],[117.781848,39.966312],[117.756441,39.965178],[117.706681,39.986016],[117.631877,39.968706],[117.599642,39.993752],[117.537497,39.997387],[117.54734,39.976848],[117.511146,39.941085],[117.525511,39.92961],[117.50399,39.904851],[117.548538,39.845405],[117.540856,39.821939],[117.568243,39.799244],[117.543308,39.760613],[117.595883,39.746131],[117.580047,39.719449],[117.646969,39.699638],[117.668326,39.667086],[117.666473,39.642919],[117.620999,39.592825],[117.636817,39.6037],[117.65565,39.574916],[117.681637,39.589982],[117.705864,39.576495],[117.685687,39.564428],[117.708442,39.555079],[117.715943,39.530091],[117.744982,39.548466],[117.737736,39.574057],[117.767537,39.599747],[117.868274,39.596841],[117.933979,39.57415],[117.905376,39.535096],[117.898203,39.472513],[117.870344,39.454948],[117.871852,39.41155],[117.847081,39.408072],[117.865713,39.378267],[117.805293,39.373298],[117.803368,39.362042],[117.837038,39.350816],[117.852075,39.369614],[117.862935,39.362277],[117.841941,39.33642],[117.849641,39.327371],[117.966051,39.316421],[117.995707,39.288805],[118.028378,39.290438],[118.036496,39.265151],[118.064772,39.255934],[118.065607,39.235127],[118.037077,39.230525],[118.026217,39.201775],[118.070438,39.214046],[118.125301,39.182759],[118.229289,39.031959],[118.319256,39.009526],[118.372321,39.015859],[118.378024,38.971763],[118.491055,38.90907],[118.525252,38.904873],[118.604468,38.971479],[118.57049,38.999204],[118.532861,39.091065],[118.583729,39.100948],[118.578753,39.130919],[118.592737,39.14262],[118.651704,39.155216],[118.693001,39.148093]]]}}]};
@@ -119,6 +153,11 @@
     let pendingCountyFocusPayload = null;
     let feederPopup = null;
     let pendingFeederLocatePayload = null;
+    let pendingChainLocatePayload = null;
+    let activeOutageChainSubstation = null;
+    let pendingSpaceDeviceLocatePayload = null;
+    let activeSpaceDistributionDevice = null;
+    let outageFocusMarker = null;
 
     function getMarkerConstructor() {
         return narimap.Marker || narimap?.covers?.Marker || null;
@@ -168,6 +207,80 @@
         feederPopup = null;
     }
 
+    function clearOutageFocusMarker() {
+        if (outageFocusMarker && typeof outageFocusMarker.remove === "function") {
+            outageFocusMarker.remove();
+        }
+        outageFocusMarker = null;
+    }
+
+    function createOutageFocusMarkerElement() {
+        const markerNode = document.createElement("div");
+        markerNode.className = "outage-focus-marker";
+        return markerNode;
+    }
+
+    function setOutageFocusMarker(lngLat, popupDevice = null) {
+        const normalized = normalizeLngLat(lngLat);
+        if (!normalized || !mapInstance) {
+            return;
+        }
+
+        const MarkerCtor = getMarkerConstructor();
+        if (!MarkerCtor) {
+            return;
+        }
+
+        clearOutageFocusMarker();
+
+        const markerElement = createOutageFocusMarkerElement();
+        let marker = null;
+        try {
+            marker = new MarkerCtor({ element: markerElement, anchor: "center" });
+        } catch (_error) {
+            try {
+                marker = new MarkerCtor(markerElement);
+            } catch (_error2) {
+                marker = null;
+            }
+        }
+        if (!marker) {
+            return;
+        }
+
+        if (typeof marker.setLngLat === "function") {
+            marker.setLngLat(normalized);
+        }
+        if (typeof marker.addTo === "function") {
+            marker.addTo(mapInstance);
+        }
+
+        const popupPayload =
+            popupDevice && typeof popupDevice === "object"
+                ? { ...popupDevice }
+                : (activeSpaceDistributionDevice ? { ...activeSpaceDistributionDevice } : null);
+        const openMarkerPopup = function () {
+            if (!popupPayload) {
+                return;
+            }
+            let markerLngLat = normalized;
+            if (typeof marker.getLngLat === "function") {
+                const currentLngLat = normalizeLngLat(marker.getLngLat());
+                if (currentLngLat) {
+                    markerLngLat = currentLngLat;
+                }
+            }
+            openSpaceDistributionDevicePopup(popupPayload, markerLngLat);
+        };
+        if (typeof marker.on === "function") {
+            marker.on("click", openMarkerPopup);
+        } else {
+            markerElement.addEventListener("click", openMarkerPopup);
+        }
+
+        outageFocusMarker = marker;
+    }
+
     function normalizeLngLat(value) {
         if (!value) {
             return null;
@@ -193,6 +306,184 @@
         return [lng, lat];
     }
 
+    function collectLngLatPoints(value, points) {
+        if (!value) {
+            return;
+        }
+
+        if (Array.isArray(value)) {
+            const direct = normalizeLngLat(value);
+            if (direct) {
+                points.push(direct);
+                return;
+            }
+            value.forEach((item) => collectLngLatPoints(item, points));
+            return;
+        }
+
+        if (typeof value === "object") {
+            const direct = normalizeLngLat(value);
+            if (direct) {
+                points.push(direct);
+            }
+        }
+    }
+
+    function getOutageRangePoints(payload) {
+        const points = [];
+        collectLngLatPoints(payload?.rangePoints, points);
+        collectLngLatPoints(payload?.linePoints, points);
+        collectLngLatPoints(payload?.affectedUsers, points);
+        collectLngLatPoints(payload?.userPoints, points);
+        collectLngLatPoints(payload?.stationLocation, points);
+        collectLngLatPoints(payload?.substationLocation, points);
+        collectLngLatPoints(payload?.center, points);
+        collectLngLatPoints(payload?.lngLat, points);
+
+        const seen = new Set();
+        return points.filter((point) => {
+            const key = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function metersToLatDegrees(meters) {
+        return meters / 111320;
+    }
+
+    function metersToLngDegrees(meters, lat) {
+        const scale = Math.max(Math.cos((lat * Math.PI) / 180), 0.2);
+        return meters / (111320 * scale);
+    }
+
+    function createOutageRangePolygon(points, radiusMeters) {
+        const normalizedPoints = Array.isArray(points) ? points.filter(Boolean) : [];
+        const radius = Math.max(Number(radiusMeters) || 1600, 900);
+        const basePoint = normalizedPoints[0] || getMapCenterLngLat();
+
+        if (normalizedPoints.length <= 1) {
+            const center = basePoint;
+            const lngRadius = metersToLngDegrees(radius, center[1]);
+            const latRadius = metersToLatDegrees(radius);
+            const coordinates = [];
+            for (let index = 0; index <= 72; index += 1) {
+                const angle = (index / 72) * Math.PI * 2;
+                coordinates.push([
+                    center[0] + Math.cos(angle) * lngRadius,
+                    center[1] + Math.sin(angle) * latRadius,
+                ]);
+            }
+            return coordinates;
+        }
+
+        const lngs = normalizedPoints.map((point) => point[0]);
+        const lats = normalizedPoints.map((point) => point[1]);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const center = [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+        const lngPadding = metersToLngDegrees(radius, center[1]);
+        const latPadding = metersToLatDegrees(radius);
+        const lngRadius = Math.max((maxLng - minLng) / 2 + lngPadding, lngPadding);
+        const latRadius = Math.max((maxLat - minLat) / 2 + latPadding, latPadding);
+        const coordinates = [];
+
+        for (let index = 0; index <= 72; index += 1) {
+            const angle = (index / 72) * Math.PI * 2;
+            coordinates.push([
+                center[0] + Math.cos(angle) * lngRadius,
+                center[1] + Math.sin(angle) * latRadius,
+            ]);
+        }
+        return coordinates;
+    }
+
+    function clearOutageRangeOverlay() {
+        if (!mapInstance) {
+            return;
+        }
+        try {
+            if (mapInstance.getLayer && mapInstance.getLayer(outageRangeLineLayerId)) {
+                mapInstance.removeLayer(outageRangeLineLayerId);
+            }
+            if (mapInstance.getLayer && mapInstance.getLayer(outageRangeFillLayerId)) {
+                mapInstance.removeLayer(outageRangeFillLayerId);
+            }
+            if (mapInstance.getSource && mapInstance.getSource(outageRangeSourceId)) {
+                mapInstance.removeSource(outageRangeSourceId);
+            }
+        } catch (error) {
+            console.warn("clear outage range overlay failed", error);
+        }
+    }
+
+    function renderOutageRangeOverlay(payload, fallbackCenter) {
+        if (!mapInstance || typeof mapInstance.addSource !== "function" || typeof mapInstance.addLayer !== "function") {
+            return;
+        }
+
+        const points = getOutageRangePoints(payload);
+        if (points.length === 0) {
+            const center = normalizeLngLat(fallbackCenter) || getMapCenterLngLat();
+            if (center) {
+                points.push(center);
+            }
+        }
+        if (points.length === 0) {
+            return;
+        }
+
+        const radiusMeters = Number(payload?.rangeRadiusMeters || payload?.radiusMeters || 1600);
+        const coordinates = createOutageRangePolygon(points, radiusMeters);
+        const data = {
+            type: "FeatureCollection",
+            features: [{
+                type: "Feature",
+                properties: {
+                    outageNumber: String(payload?.outageNumber || ""),
+                },
+                geometry: {
+                    type: "Polygon",
+                    coordinates: [coordinates],
+                },
+            }],
+        };
+
+        clearOutageRangeOverlay();
+        try {
+            mapInstance.addSource(outageRangeSourceId, {
+                type: "geojson",
+                data,
+            });
+            mapInstance.addLayer({
+                id: outageRangeFillLayerId,
+                type: "fill",
+                source: outageRangeSourceId,
+                paint: {
+                    "fill-color": "#ff5a3d",
+                    "fill-opacity": 0.22,
+                },
+            });
+            mapInstance.addLayer({
+                id: outageRangeLineLayerId,
+                type: "line",
+                source: outageRangeSourceId,
+                paint: {
+                    "line-color": "#ffcf5a",
+                    "line-width": 3,
+                    "line-opacity": 0.96,
+                },
+            });
+        } catch (error) {
+            console.warn("render outage range overlay failed", error);
+        }
+    }
+
     function getMapCenterLngLat() {
         if (!mapInstance || typeof mapInstance.getCenter !== "function") {
             return defaultCenter;
@@ -205,6 +496,105 @@
         return `
             <div class="feeder-popup-content">
                 <p class="feeder-popup-title">${escapeHtml(feederName || "馈线")}</p>
+            </div>
+        `;
+    }
+
+    function getOutageChainSubstationPopupContent(outageNumber, substationName) {
+        return `
+            <div class="feeder-popup-content">
+                <p class="feeder-popup-title">事件ID：${escapeHtml(outageNumber || "-")}</p>
+                <p class="county-popup-summary">变电站：${escapeHtml(substationName || "-")}</p>
+            </div>
+        `;
+    }
+
+    function getSpaceDeviceTypeText(devType) {
+        const normalized = String(devType || "").trim();
+        if (normalized === "0302") {
+            return "配电变压器";
+        }
+        if (normalized === "0110") {
+            return "柱上变压器";
+        }
+        return "-";
+    }
+
+    function getSpaceDistributionDevicePopupContent(device) {
+        const parseBooleanValue = function (value) {
+            if (typeof value === "boolean") {
+                return value;
+            }
+            const text = String(value ?? "").trim().toLowerCase();
+            if (["true", "1", "y", "yes", "是"].includes(text)) {
+                return true;
+            }
+            if (["false", "0", "n", "no", "否"].includes(text)) {
+                return false;
+            }
+            return null;
+        };
+
+        const outageSubstationName = String(device?.outageSubstationName || "").trim();
+        if (outageSubstationName) {
+            const restoredFlag = parseBooleanValue(device?.isRestored);
+            const restoreStatusText = restoredFlag === null ? "-" : (restoredFlag ? "已复电" : "未复电");
+            return `
+            <div class="feeder-popup-content">
+                <p class="feeder-popup-title">变电站名称：${escapeHtml(outageSubstationName || "-")}</p>
+                <p class="county-popup-summary">停电开始事件：${escapeHtml(device?.beginTime || "-")}</p>
+                <p class="county-popup-summary">结束时间：${escapeHtml(device?.endTime || "-")}</p>
+                <p class="county-popup-summary">复电状态：${escapeHtml(restoreStatusText)}</p>
+                <p class="county-popup-summary">县区单位：${escapeHtml(device?.countyName || "-")}</p>
+                <p class="county-popup-summary">影响户数：${escapeHtml(String(device?.affectedUsers ?? "-"))}</p>
+            </div>
+        `;
+        }
+
+        const outageLineName = String(device?.outageLineName || "").trim();
+        const feederName = String(device?.feederName || "").trim() || outageLineName;
+        if (feederName) {
+            const restoredFlag = parseBooleanValue(device?.isRestored);
+            const restoreStatusText = restoredFlag === null ? "-" : (restoredFlag ? "已复电" : "未复电");
+            return `
+            <div class="feeder-popup-content">
+                <p class="feeder-popup-title">线路名称：${escapeHtml(feederName || "-")}</p>
+                <p class="county-popup-summary">停电开始事件：${escapeHtml(device?.beginTime || "-")}</p>
+                <p class="county-popup-summary">结束时间：${escapeHtml(device?.endTime || "-")}</p>
+                <p class="county-popup-summary">复电状态：${escapeHtml(restoreStatusText)}</p>
+                <p class="county-popup-summary">县区单位：${escapeHtml(device?.countyName || "-")}</p>
+                <p class="county-popup-summary">影响户数：${escapeHtml(String(device?.affectedUsers ?? "-"))}</p>
+            </div>
+        `;
+        }
+
+        const importantUserCount = Number(device?.importantUserCount ?? 0);
+        const sensitiveUserCount = Number(device?.sensitiveUserCount ?? 0);
+        const totalUserCount = Number(device?.totalUserCount ?? importantUserCount + sensitiveUserCount);
+        return `
+            <div class="feeder-popup-content">
+                <p class="feeder-popup-title">设备名称：${escapeHtml(device?.deviceName || "-")}</p>
+                <p class="county-popup-summary">设备类型：${escapeHtml(getSpaceDeviceTypeText(device?.devType))}</p>
+                <p class="county-popup-summary">重点用户数：${escapeHtml(Number.isFinite(importantUserCount) ? String(Math.max(importantUserCount, 0)) : "0")}</p>
+                <p class="county-popup-summary">敏感用户数：${escapeHtml(Number.isFinite(sensitiveUserCount) ? String(Math.max(sensitiveUserCount, 0)) : "0")}</p>
+                <p class="county-popup-summary">影响用户总数：${escapeHtml(Number.isFinite(totalUserCount) ? String(Math.max(totalUserCount, 0)) : "0")}</p>
+            </div>
+        `;
+    }
+
+    function getOutageChainPopupContent(payload) {
+        const outageNumber = String(payload?.outageNumber || "").trim();
+        const devices = Array.isArray(payload?.devices) ? payload.devices : [];
+        const feeder = devices.find((item) => item?.role === "feeder") || null;
+        const substation = devices.find((item) => item?.role === "substation") || null;
+        const title = outageNumber ? `停电事件 ${escapeHtml(outageNumber)}` : "停电范围定位";
+        const feederName = escapeHtml(feeder?.name || feeder?.devId || "-");
+        const substationName = escapeHtml(substation?.name || substation?.devId || "-");
+        return `
+            <div class="feeder-popup-content">
+                <p class="feeder-popup-title">${title}</p>
+                <p class="county-popup-summary">线路：${feederName}</p>
+                <p class="county-popup-summary">变电站：${substationName}</p>
             </div>
         `;
     }
@@ -248,8 +638,258 @@
         feederPopup = popup;
     }
 
+    function getFeatureValue(feature, keys = []) {
+        if (!feature || typeof feature !== "object") {
+            return "";
+        }
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (feature[key] != null && String(feature[key]).trim() !== "") {
+                return String(feature[key]).trim();
+            }
+            const props = feature.properties;
+            if (props && props[key] != null && String(props[key]).trim() !== "") {
+                return String(props[key]).trim();
+            }
+        }
+        return "";
+    }
+
+    function extractFeatureLngLat(feature, clickPayload) {
+        const fromPayload = clickPayload?.lngLat || clickPayload?.lnglat || clickPayload?.point || null;
+        if (fromPayload) {
+            const normalized = normalizeLngLat(fromPayload);
+            if (normalized) {
+                return normalized;
+            }
+        }
+
+        const pointCandidates = [
+            feature?.lngLat,
+            feature?.lnglat,
+            feature?.point,
+            feature?.geometry?.coordinates,
+            feature?.properties?.coordinates,
+        ];
+        for (let i = 0; i < pointCandidates.length; i += 1) {
+            const normalized = normalizeLngLat(pointCandidates[i]);
+            if (normalized) {
+                return normalized;
+            }
+        }
+        return getMapCenterLngLat();
+    }
+
+    function openOutageChainSubstationPopup(outageNumber, substationName, lngLat) {
+        if (!mapInstance) {
+            return;
+        }
+        const PopupCtor = getPopupConstructor();
+        if (!PopupCtor) {
+            return;
+        }
+
+        clearFeederPopup();
+
+        let popup = null;
+        try {
+            popup = new PopupCtor({
+                closeButton: false,
+                closeOnClick: false,
+                anchor: "bottom",
+                offset: [0, -18],
+                maxWidth: "420px",
+            });
+        } catch (_error) {
+            popup = new PopupCtor();
+        }
+
+        const content = getOutageChainSubstationPopupContent(outageNumber, substationName);
+        if (typeof popup.setHTML === "function") {
+            popup.setHTML(content);
+        } else if (typeof popup.setHtml === "function") {
+            popup.setHtml(content);
+        }
+        if (typeof popup.setLngLat === "function") {
+            popup.setLngLat(Array.isArray(lngLat) ? lngLat : getMapCenterLngLat());
+        }
+        if (typeof popup.addTo === "function") {
+            popup.addTo(mapInstance);
+        }
+        feederPopup = popup;
+    }
+
+    function openSpaceDistributionDevicePopup(device, lngLat) {
+        if (!mapInstance || !device) {
+            return;
+        }
+        const PopupCtor = getPopupConstructor();
+        if (!PopupCtor) {
+            return;
+        }
+
+        clearFeederPopup();
+
+        let popup = null;
+        try {
+            popup = new PopupCtor({
+                closeButton: false,
+                closeOnClick: false,
+                anchor: "bottom",
+                offset: [0, -18],
+                maxWidth: "420px",
+            });
+        } catch (_error) {
+            popup = new PopupCtor();
+        }
+
+        const content = getSpaceDistributionDevicePopupContent(device);
+        if (typeof popup.setHTML === "function") {
+            popup.setHTML(content);
+        } else if (typeof popup.setHtml === "function") {
+            popup.setHtml(content);
+        }
+        if (typeof popup.setLngLat === "function") {
+            popup.setLngLat(Array.isArray(lngLat) ? lngLat : getMapCenterLngLat());
+        }
+        if (typeof popup.addTo === "function") {
+            popup.addTo(mapInstance);
+        }
+        feederPopup = popup;
+    }
+
+    function normalizeFeatureList(clickPayload) {
+        if (Array.isArray(clickPayload)) {
+            return clickPayload;
+        }
+        if (Array.isArray(clickPayload?.features)) {
+            return clickPayload.features;
+        }
+        if (clickPayload && typeof clickPayload === "object") {
+            return [clickPayload];
+        }
+        return [];
+    }
+
+    function isTargetOutageSubstationFeature(feature, target) {
+        if (!feature || !target) {
+            return false;
+        }
+
+        const featureId = getFeatureValue(feature, ["psruri", "psrUri", "psrid", "devId", "id", "resourceId"]);
+        const featureName = getFeatureValue(feature, ["psrname", "devName", "name", "substationName", "rdtSubsName"]);
+        const targetId = String(target.substationId || "").trim();
+        const targetName = String(target.substationName || "").trim();
+
+        if (targetId && featureId && targetId === featureId) {
+            return true;
+        }
+        if (targetName && featureName && targetName === featureName) {
+            return true;
+        }
+        return false;
+    }
+
+    function isTargetSpaceDistributionDeviceFeature(feature, target) {
+        if (!feature || !target) {
+            return false;
+        }
+        const featureId = getFeatureValue(feature, ["psruri", "psrUri", "psrid", "devId", "id", "resourceId"]);
+        const featureName = getFeatureValue(feature, ["psrname", "devName", "name", "equipmentName"]);
+        const targetId = String(target.devId || "").trim();
+        const targetName = String(target.deviceName || "").trim();
+
+        if (targetId && featureId && targetId === featureId) {
+            return true;
+        }
+        if (targetName && featureName && targetName === featureName) {
+            return true;
+        }
+        return false;
+    }
+
+    function bindOutageChainSubstationClickPopup() {
+        if (!psrMapInstance || typeof psrMapInstance.on !== "function") {
+            return;
+        }
+
+        psrMapInstance.on("click", function (payload) {
+            const features = normalizeFeatureList(payload);
+
+            if (activeOutageChainSubstation) {
+                const outageMatched = features.find((item) => isTargetOutageSubstationFeature(item, activeOutageChainSubstation));
+                if (outageMatched) {
+                    const lngLat = extractFeatureLngLat(outageMatched, payload);
+                    openOutageChainSubstationPopup(
+                        activeOutageChainSubstation.outageNumber,
+                        activeOutageChainSubstation.substationName,
+                        lngLat,
+                    );
+                    return;
+                }
+            }
+
+            if (activeSpaceDistributionDevice) {
+                const spaceMatched = features.find((item) =>
+                    isTargetSpaceDistributionDeviceFeature(item, activeSpaceDistributionDevice),
+                );
+                if (spaceMatched) {
+                    const lngLat = extractFeatureLngLat(spaceMatched, payload);
+                    if (activeSpaceDistributionDevice.enableFocusMark) {
+                        setOutageFocusMarker(lngLat, activeSpaceDistributionDevice);
+                    } else {
+                        clearOutageFocusMarker();
+                    }
+                    openSpaceDistributionDevicePopup(activeSpaceDistributionDevice, lngLat);
+                }
+            }
+        });
+    }
+
+    function openOutageChainPopup(payload, lngLat) {
+        if (!mapInstance) {
+            return;
+        }
+        const PopupCtor = getPopupConstructor();
+        if (!PopupCtor) {
+            return;
+        }
+
+        clearFeederPopup();
+
+        let popup = null;
+        try {
+            popup = new PopupCtor({
+                closeButton: false,
+                closeOnClick: false,
+                anchor: "bottom",
+                offset: [0, -18],
+                maxWidth: "420px",
+            });
+        } catch (_error) {
+            popup = new PopupCtor();
+        }
+
+        const content = getOutageChainPopupContent(payload);
+        if (typeof popup.setHTML === "function") {
+            popup.setHTML(content);
+        } else if (typeof popup.setHtml === "function") {
+            popup.setHtml(content);
+        }
+        if (typeof popup.setLngLat === "function") {
+            popup.setLngLat(Array.isArray(lngLat) ? lngLat : getMapCenterLngLat());
+        }
+        if (typeof popup.addTo === "function") {
+            popup.addTo(mapInstance);
+        }
+        feederPopup = popup;
+    }
+
     function locateOutageFeeder(payload) {
         pendingFeederLocatePayload = payload ?? null;
+        activeSpaceDistributionDevice = null;
+        clearOutageFocusMarker();
+        clearOutageRangeOverlay();
         const feederId = String(payload?.rdtFeederId || payload?.feederId || "").trim();
         if (!feederId || !psrMapInstance || typeof psrMapInstance.flyToDevices !== "function") {
             return;
@@ -288,6 +928,254 @@
             return;
         }
         showPopup();
+    }
+
+    function normalizeOutageChainDevices(payload) {
+        const incoming = Array.isArray(payload?.devices) ? payload.devices : [];
+        const list = incoming
+            .map((item) => {
+                const role = String(item?.role || "").trim();
+                const devId = String(item?.devId || "").trim();
+                if (!devId) {
+                    return null;
+                }
+                const fallbackType = role === "substation" ? outageChainSubstationDevType : outageChainFeederDevType;
+                const rawDevType = String(item?.devType || fallbackType).trim() || fallbackType;
+                const devType = role === "feeder" ? rawDevType.toLowerCase() : rawDevType;
+                return {
+                    role,
+                    devId,
+                    devType,
+                    provinceId: String(item?.provinceId || outageChainProvinceId).trim() || outageChainProvinceId,
+                    distribution: Number(item?.distribution ?? outageChainDistribution),
+                    name: String(item?.name || "").trim(),
+                };
+            })
+            .filter(Boolean);
+
+        if (list.length > 0) {
+            return list;
+        }
+
+        const feederId = String(payload?.rdtFeederId || payload?.feederId || "").trim();
+        const substationId = String(payload?.rdtSubsId || payload?.substationId || "").trim();
+        const fallback = [];
+        if (feederId) {
+            fallback.push({
+                role: "feeder",
+                devId: feederId,
+                devType: outageChainFeederDevType,
+                provinceId: outageChainProvinceId,
+                distribution: outageChainDistribution,
+                name: String(payload?.rdtFeederName || payload?.feederName || feederId).trim(),
+            });
+        }
+        if (substationId) {
+            fallback.push({
+                role: "substation",
+                devId: substationId,
+                devType: outageChainSubstationDevType,
+                provinceId: outageChainProvinceId,
+                distribution: outageChainDistribution,
+                name: String(payload?.rdtSubsName || payload?.substationName || substationId).trim(),
+            });
+        }
+        return fallback;
+    }
+
+    function flyChainCandidates(candidates = []) {
+        if (!psrMapInstance || typeof psrMapInstance.flyToDevices !== "function") {
+            return Promise.resolve(false);
+        }
+        if (!Array.isArray(candidates) || candidates.length === 0) {
+            return Promise.resolve(false);
+        }
+
+        let index = 0;
+        const runNext = function () {
+            if (index >= candidates.length) {
+                return Promise.resolve(false);
+            }
+
+            const current = candidates[index];
+            index += 1;
+            let result = null;
+            try {
+                result = psrMapInstance.flyToDevices([current], { hightlight: true });
+            } catch (_error) {
+                return runNext();
+            }
+
+            if (result && typeof result.then === "function") {
+                return result
+                    .then(function () {
+                        return true;
+                    })
+                    .catch(function () {
+                        return runNext();
+                    });
+            }
+            return Promise.resolve(true);
+        };
+
+        return runNext();
+    }
+
+    function highlightOutageChainFeeder(feeder) {
+        if (!feeder) {
+            return Promise.resolve(false);
+        }
+        const devTypeLower = String(feeder.devType || outageChainFeederDevType).trim().toLowerCase() || outageChainFeederDevType;
+        const devTypeUpper = devTypeLower.toUpperCase();
+        const candidates = [
+            {
+                devId: feeder.devId,
+                devType: devTypeLower,
+                provinceId: feeder.provinceId,
+                distribution: feeder.distribution,
+            },
+            {
+                devId: feeder.devId,
+                devType: devTypeUpper,
+                provinceId: feeder.provinceId,
+                distribution: feeder.distribution,
+            },
+            {
+                devId: feeder.devId,
+                devType: devTypeLower,
+            },
+            {
+                devId: feeder.devId,
+                devType: devTypeUpper,
+            },
+            {
+                devId: feeder.devId,
+            },
+        ];
+        return flyChainCandidates(candidates);
+    }
+
+    function locateOutageChain(payload) {
+        pendingChainLocatePayload = payload ?? null;
+        activeSpaceDistributionDevice = null;
+        clearOutageFocusMarker();
+        const devices = normalizeOutageChainDevices(payload);
+        if (devices.length === 0 || !psrMapInstance || typeof psrMapInstance.flyToDevices !== "function") {
+            renderOutageRangeOverlay(payload, getMapCenterLngLat());
+            return;
+        }
+        clearFeederPopup();
+        const substation = devices.find((item) => item.role === "substation") || null;
+        const feeder = devices.find((item) => item.role === "feeder") || null;
+        activeOutageChainSubstation = substation
+            ? {
+                outageNumber: String(payload?.outageNumber || "").trim(),
+                substationId: String(substation.devId || "").trim(),
+                substationName: String(substation.name || substation.devId || "").trim(),
+            }
+            : null;
+        if (!substation) {
+            void highlightOutageChainFeeder(feeder).then(function () {
+                renderOutageRangeOverlay(payload, getMapCenterLngLat());
+            });
+            return;
+        }
+        const flyResult = flyChainCandidates([{
+            devId: substation.devId,
+            devType: substation.devType,
+            provinceId: substation.provinceId,
+            distribution: substation.distribution,
+        }]);
+        const renderRange = function (delay) {
+            window.setTimeout(function () {
+                renderOutageRangeOverlay(payload, getMapCenterLngLat());
+            }, delay);
+        };
+        if (flyResult && typeof flyResult.then === "function") {
+            flyResult
+                .then(function () {
+                    renderRange(180);
+                })
+                .catch(function () {
+                    renderRange(180);
+                });
+        }
+        [520, 1000, 1800].forEach(renderRange);
+    }
+
+    function locateSpaceDistributionDevice(payload) {
+        pendingSpaceDeviceLocatePayload = payload ?? null;
+        activeOutageChainSubstation = null;
+        clearFeederPopup();
+        clearOutageFocusMarker();
+        clearOutageRangeOverlay();
+
+        const devId = String(payload?.devId || "").trim();
+        if (!devId || !psrMapInstance || typeof psrMapInstance.flyToDevices !== "function") {
+            activeSpaceDistributionDevice = null;
+            return;
+        }
+
+        const devType = String(payload?.devType || "").trim();
+        const provinceId = String(payload?.provinceId || outageChainProvinceId).trim() || outageChainProvinceId;
+        const distribution = Number(payload?.distribution ?? outageChainDistribution);
+        const importantUserCount = Math.max(Number(payload?.importantUserCount ?? 0) || 0, 0);
+        const sensitiveUserCount = Math.max(Number(payload?.sensitiveUserCount ?? 0) || 0, 0);
+        const totalUserCount = Math.max(
+            Number(payload?.totalUserCount ?? importantUserCount + sensitiveUserCount) || 0,
+            importantUserCount + sensitiveUserCount,
+        );
+
+        activeSpaceDistributionDevice = {
+            devId,
+            devType,
+            deviceName: String(payload?.deviceName || payload?.name || devId).trim() || devId,
+            importantUserCount,
+            sensitiveUserCount,
+            totalUserCount,
+            outageSubstationName: String(payload?.outageSubstationName || "").trim(),
+            feederName: String(payload?.feederName || "").trim(),
+            outageLineName: String(payload?.outageLineName || "").trim(),
+            beginTime: String(payload?.beginTime || "").trim() || "-",
+            endTime: String(payload?.endTime || "").trim() || "-",
+            isRestored: payload?.isRestored,
+            countyName: String(payload?.countyName || "").trim() || "-",
+            affectedUsers: payload?.affectedUsers,
+            affectedConsCnt: payload?.affectedConsCnt,
+            enableFocusMark: Boolean(payload?.enableFocusMark),
+        };
+
+        const candidates = [
+            { devId, devType, provinceId, distribution },
+            { devId, devType },
+            { devId },
+        ].filter((item, index) => index === 0 ? Boolean(item.devType) : true);
+
+        const flyResult = flyChainCandidates(candidates);
+        if (!activeSpaceDistributionDevice.enableFocusMark) {
+            return;
+        }
+
+        const markCenter = function (delay) {
+            window.setTimeout(function () {
+                setOutageFocusMarker(getMapCenterLngLat(), activeSpaceDistributionDevice);
+            }, delay);
+        };
+        const scheduleFocusMark = function () {
+            [120, 420, 900, 1500, 2300].forEach(markCenter);
+        };
+
+        if (flyResult && typeof flyResult.then === "function") {
+            flyResult
+                .then(function () {
+                    markCenter(160);
+                })
+                .catch(function () {
+                    markCenter(160);
+                });
+        }
+
+        scheduleFocusMark();
     }
 
     function clearCountyMarkers() {
@@ -613,6 +1501,16 @@
 
         if (type === mapOutageFeederLocateMessageType) {
             locateOutageFeeder(event?.data?.payload || null);
+            return;
+        }
+
+        if (type === mapOutageChainLocateMessageType) {
+            locateOutageChain(event?.data?.payload || null);
+            return;
+        }
+
+        if (type === mapSpaceDeviceLocateMessageType) {
+            locateSpaceDistributionDevice(event?.data?.payload || null);
         }
     }
 
@@ -634,6 +1532,8 @@
         }
         applyCountyFocus(pendingCountyFocusPayload);
         locateOutageFeeder(pendingFeederLocatePayload);
+        locateOutageChain(pendingChainLocatePayload);
+        locateSpaceDistributionDevice(pendingSpaceDeviceLocatePayload);
         window.parent.postMessage({ type: keyUserMapReadyMessageType }, window.location.origin);
     }
 
@@ -701,7 +1601,10 @@
             try {
                 psrMapInstance = new narimap.PSRMap(map);
                 psrMapInstance.addPSR([900, 901, 902, 903]);
+                bindOutageChainSubstationClickPopup();
                 locateOutageFeeder(pendingFeederLocatePayload);
+                locateOutageChain(pendingChainLocatePayload);
+                locateSpaceDistributionDevice(pendingSpaceDeviceLocatePayload);
             } catch (error) {
                 console.error("Power grid layer render error", error);
             }

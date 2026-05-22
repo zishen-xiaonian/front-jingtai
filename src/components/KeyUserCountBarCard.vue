@@ -39,8 +39,16 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  overviewLoading: {
+    type: Boolean,
+    default: false,
+  },
+  equipmentStatsLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
-const emit = defineEmits(['open-detail-page', 'go-detail-page', 'close-detail-page'])
+const emit = defineEmits(['open-detail-page', 'go-detail-page', 'close-detail-page', 'select-top-device'])
 
 const toCount = (value) => Math.max(0, Number(value) || 0)
 const TREND_MIN_TRACK_PERCENT = 16
@@ -75,7 +83,7 @@ const displayRows = computed(() => {
   })
 })
 
-const emptyText = computed(() => '暂无区县数据')
+const emptyText = computed(() => '')
 
 const buildSegmentStyle = (percent, count) => {
   if (count <= 0 || percent <= 0) {
@@ -103,6 +111,7 @@ const detailJumpPageInput = ref('')
 const normalizeEquipmentRows = (rows) =>
   rows.map((item, index) => {
     const equipmentId = String(item?.equipmentId || item?.deviceNo || '').trim() || '-'
+    const equipmentType = String(item?.equipmentType || item?.equipment_type || item?.type || '').trim()
     const deviceNo = String(item?.deviceNo || '').trim() || '-'
     const deviceName = String(item?.deviceName || '').trim() || '-'
     const importantUserCount = toCount(item?.importantUserCount)
@@ -114,6 +123,7 @@ const normalizeEquipmentRows = (rows) =>
     return {
       id: String(item?.key || `${deviceNo}-${deviceName}-${index}`),
       equipmentId,
+      equipmentType,
       deviceNo,
       deviceName,
       importantUserCount,
@@ -261,6 +271,7 @@ const openDetailModal = async (item) => {
     importantUserList: Array.isArray(item?.importantUserList) ? item.importantUserList : [],
     sensitiveUserList: Array.isArray(item?.sensitiveUserList) ? item.sensitiveUserList : [],
   }
+  emit('select-top-device', selectedDetailRow.value)
   detailModalVisible.value = true
   detailModalLoading.value = true
   detailModalError.value = ''
@@ -287,13 +298,16 @@ const openDetailModal = async (item) => {
     selectedDetailRow.value = {
       ...(selectedDetailRow.value || {}),
       equipmentId: String(data?.equipmentId || equipmentId).trim() || '-',
+      equipmentType: String(data?.equipmentType || selectedDetailRow.value?.equipmentType || '').trim(),
       deviceNo: String(data?.equipmentId || selectedDetailRow.value?.deviceNo || equipmentId).trim() || '-',
       deviceName: String(data?.equipmentName || selectedDetailRow.value?.deviceName || '').trim() || '-',
       importantUserCount: toCount(data?.keyUserCount ?? importantUserList.length),
       sensitiveUserCount: toCount(data?.sensitiveUserCount ?? sensitiveUserList.length),
+      totalUserCount: toCount(data?.keyUserCount ?? importantUserList.length) + toCount(data?.sensitiveUserCount ?? sensitiveUserList.length),
       importantUserList,
       sensitiveUserList,
     }
+    emit('select-top-device', selectedDetailRow.value)
   } catch {
     if (requestId !== detailModalRequestId.value) {
       return
@@ -316,6 +330,7 @@ const closeDetailModal = () => {
 
 const selectTopDevice = (item) => {
   selectedTopDeviceId.value = item?.id || ''
+  emit('select-top-device', item || null)
 }
 
 const goDetailPage = (page) => {
@@ -397,6 +412,11 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
         </div>
       </div>
 
+      <div v-else-if="props.overviewLoading" class="trend-empty space-overview-loading">
+        <span class="space-loading-spinner" aria-hidden="true"></span>
+        <span>数据加载中...</span>
+      </div>
+
       <div v-else class="trend-empty">{{ emptyText }}</div>
     </div>
 
@@ -412,19 +432,23 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
           <div class="space-summary-grid">
             <article class="space-summary-item">
               <p>影响设备数</p>
-              <strong>{{ summaryStats.affectedDeviceCount }}</strong>
+              <strong v-if="props.equipmentStatsLoading" class="space-summary-loading-text">数据加载中...</strong>
+              <strong v-else>{{ summaryStats.affectedDeviceCount }}</strong>
             </article>
             <article class="space-summary-item">
               <p>敏感用户总数</p>
-              <strong>{{ summaryStats.sensitiveUserTotal }}</strong>
+              <strong v-if="props.equipmentStatsLoading" class="space-summary-loading-text">数据加载中...</strong>
+              <strong v-else>{{ summaryStats.sensitiveUserTotal }}</strong>
             </article>
             <article class="space-summary-item">
               <p>重点用户总数</p>
-              <strong>{{ summaryStats.importantUserTotal }}</strong>
+              <strong v-if="props.equipmentStatsLoading" class="space-summary-loading-text">数据加载中...</strong>
+              <strong v-else>{{ summaryStats.importantUserTotal }}</strong>
             </article>
             <article class="space-summary-item">
               <p>高风险设备占比</p>
-              <strong>{{ formatPercent(summaryStats.highRiskRatio) }}</strong>
+              <strong v-if="props.equipmentStatsLoading" class="space-summary-loading-text">数据加载中...</strong>
+              <strong v-else>{{ formatPercent(summaryStats.highRiskRatio) }}</strong>
               <small>重点+敏感 >= 20</small>
             </article>
           </div>
@@ -646,6 +670,30 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   border-radius: 999px;
 }
 
+.space-overview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #b9dcfb;
+  font-size: 14px;
+}
+
+.space-loading-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 193, 245, 0.26);
+  border-top-color: #7ed8ff;
+  animation: space-loading-spin 0.8s linear infinite;
+}
+
+@keyframes space-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .trend-rows {
   display: flex;
   flex-direction: column;
@@ -783,6 +831,11 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
   font-size: 24px;
   color: #edf8ff;
   line-height: 1;
+}
+
+.space-summary-item .space-summary-loading-text {
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .space-summary-item small {

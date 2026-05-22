@@ -13,6 +13,10 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
   showUserDetailPage: {
     type: Boolean,
     default: false,
@@ -116,6 +120,10 @@ const props = defineProps({
   keyUserNaturePieBackground: {
     type: String,
     default: '',
+  },
+  keyUserStatsLoading: {
+    type: Boolean,
+    default: false,
   },
   keyUserSearchInput: {
     type: String,
@@ -276,9 +284,14 @@ const keyUserTableEmptyText = computed(() =>
       <div v-for="item in props.userTagPieData" :key="item.key" class="tag-pie-card">
         <p class="tag-pie-title">{{ item.title }}</p>
         <div class="tag-pie" :style="{ '--ratio': `${item.ratio}%`, '--pie-color': item.color }">
-          <div class="tag-pie-center">
-            <strong>{{ item.ratioText }}</strong>
-            <span>{{ item.count }} / {{ item.total }}</span>
+          <div class="tag-pie-center" :class="{ loading: props.loading }">
+            <template v-if="props.loading">
+              <strong>数据加载中...</strong>
+            </template>
+            <template v-else>
+              <strong>{{ item.ratioText }}</strong>
+              <span>{{ item.count }} / {{ item.total }}</span>
+            </template>
           </div>
         </div>
       </div>
@@ -324,8 +337,13 @@ const keyUserTableEmptyText = computed(() =>
               </g>
             </svg>
             <div class="key-user-pie-center">
-              <strong>{{ hoveredIndustryPieItem ? hoveredIndustryPieItem.count : props.keyUserIndustryTotal }}</strong>
-              <span>{{ hoveredIndustryPieItem ? `${hoveredIndustryPieItem.count}户 / ${hoveredIndustryPieItem.rateText}` : '用户' }}</span>
+              <template v-if="props.keyUserStatsLoading">
+                <strong class="key-user-pie-loading-text">数据加载中...</strong>
+              </template>
+              <template v-else>
+                <strong>{{ hoveredIndustryPieItem ? hoveredIndustryPieItem.count : props.keyUserIndustryTotal }}</strong>
+                <span>{{ hoveredIndustryPieItem ? `${hoveredIndustryPieItem.count}户 / ${hoveredIndustryPieItem.rateText}` : '用户' }}</span>
+              </template>
             </div>
           </div>
           <ul class="key-user-pie-legend">
@@ -370,8 +388,13 @@ const keyUserTableEmptyText = computed(() =>
               </g>
             </svg>
             <div class="key-user-pie-center">
-              <strong>{{ hoveredSensitiveIndustryPieItem ? hoveredSensitiveIndustryPieItem.count : props.sensitiveUserIndustryTotal }}</strong>
-              <span>{{ hoveredSensitiveIndustryPieItem ? `${hoveredSensitiveIndustryPieItem.count}户 / ${hoveredSensitiveIndustryPieItem.rateText}` : '用户' }}</span>
+              <template v-if="props.keyUserStatsLoading">
+                <strong class="key-user-pie-loading-text">数据加载中...</strong>
+              </template>
+              <template v-else>
+                <strong>{{ hoveredSensitiveIndustryPieItem ? hoveredSensitiveIndustryPieItem.count : props.sensitiveUserIndustryTotal }}</strong>
+                <span>{{ hoveredSensitiveIndustryPieItem ? `${hoveredSensitiveIndustryPieItem.count}户 / ${hoveredSensitiveIndustryPieItem.rateText}` : '用户' }}</span>
+              </template>
             </div>
           </div>
           <ul class="key-user-pie-legend">
@@ -416,8 +439,13 @@ const keyUserTableEmptyText = computed(() =>
               </g>
             </svg>
             <div class="key-user-pie-center">
-              <strong>{{ hoveredNaturePieItem ? hoveredNaturePieItem.count : props.keyUserIndustryTotal }}</strong>
-              <span>{{ hoveredNaturePieItem ? `${hoveredNaturePieItem.count}户 / ${hoveredNaturePieItem.rateText}` : '用户' }}</span>
+              <template v-if="props.keyUserStatsLoading">
+                <strong class="key-user-pie-loading-text">数据加载中...</strong>
+              </template>
+              <template v-else>
+                <strong>{{ hoveredNaturePieItem ? hoveredNaturePieItem.count : props.keyUserIndustryTotal }}</strong>
+                <span>{{ hoveredNaturePieItem ? `${hoveredNaturePieItem.count}户 / ${hoveredNaturePieItem.rateText}` : '用户' }}</span>
+              </template>
             </div>
           </div>
           <ul class="key-user-pie-legend key-user-nature-legend">

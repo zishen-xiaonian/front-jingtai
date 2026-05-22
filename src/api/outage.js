@@ -45,8 +45,10 @@ const RIGHT_PANEL_OUTAGE_EVENTS_API =
   import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENTS_API || '/api/right-panel/outage-events'
 const RIGHT_PANEL_OUTAGE_EVENTS_SUMMARY_API =
   import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENTS_SUMMARY_API || '/api/right-panel/outage-events-summary'
-const RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API =
-  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API || '/api/right-panel/outage-event-detail'
+const RIGHT_PANEL_OUTAGE_EVENT_DETAIL_FEEDER_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENT_DETAIL_FEEDER_API || '/api/right-panel/outage-event-detail/feeder'
+const RIGHT_PANEL_OUTAGE_EVENT_DETAIL_SUBSTATION_API =
+  import.meta.env.VITE_RIGHT_PANEL_OUTAGE_EVENT_DETAIL_SUBSTATION_API || '/api/right-panel/outage-event-detail/substation'
 const RIGHT_PANEL_OUTAGE_CHAINS_API =
   import.meta.env.VITE_RIGHT_PANEL_OUTAGE_CHAINS_API || '/api/right-panel/outage-chains'
 
@@ -180,10 +182,14 @@ export const queryRightPanelOutageEventsSummary = (params) =>
     timeout: DEFAULT_STATS_TIMEOUT,
   })
 
-export const queryRightPanelOutageEventDetail = (params) =>
-  postJson(RIGHT_PANEL_OUTAGE_EVENT_DETAIL_API, params, {
-    timeout: DEFAULT_STATS_TIMEOUT,
-  })
+export const queryRightPanelOutageEventDetail = (params, mode = 'feeder') =>
+  postJson(
+    mode === 'substation' ? RIGHT_PANEL_OUTAGE_EVENT_DETAIL_SUBSTATION_API : RIGHT_PANEL_OUTAGE_EVENT_DETAIL_FEEDER_API,
+    params,
+    {
+      timeout: DEFAULT_STATS_TIMEOUT,
+    },
+  )
 
 export const queryRightPanelOutageChains = (params) =>
   postJson(RIGHT_PANEL_OUTAGE_CHAINS_API, params, {

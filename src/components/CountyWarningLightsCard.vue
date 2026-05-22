@@ -24,7 +24,8 @@ const props = defineProps({
         <span class="county-warning-light-name">{{ item.countyName }}</span>
       </li>
       <li v-if="props.loading && props.countyWarningLights.length === 0" class="county-warning-light-loading">
-        数据加载中...
+        <span class="county-warning-light-spinner" aria-hidden="true"></span>
+        <span>数据加载中...</span>
       </li>
     </ul>
   </article>
@@ -81,9 +82,25 @@ const props = defineProps({
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   list-style: none;
   color: rgba(196, 231, 255, 0.78);
   font-size: 14px;
+}
+
+.county-warning-light-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(126, 193, 245, 0.26);
+  border-top-color: #7ed8ff;
+  animation: county-warning-light-spin 0.8s linear infinite;
+}
+
+@keyframes county-warning-light-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .county-warning-light-dot {
