@@ -95,6 +95,17 @@ const detailTablePerPage = ref(DETAIL_PAGE_SIZE)
 const detailTableLoading = ref(false)
 const detailTableError = ref('')
 const detailTableRequestId = ref(0)
+const timeDetailModalVisible = ref(false)
+const timeDetailRangeFilter = ref('2')
+const timeDetailOutageCountFilter = ref('all')
+const timeDetailCurrentPage = ref(1)
+const timeDetailJumpPageInput = ref('')
+const timeDetailTableRows = ref([])
+const timeDetailTableTotal = ref(0)
+const timeDetailTablePerPage = ref(DETAIL_PAGE_SIZE)
+const timeDetailTableLoading = ref(false)
+const timeDetailTableError = ref('')
+const timeDetailTableRequestId = ref(0)
 
 const toDate = (value) => {
   if (value instanceof Date) {
@@ -182,6 +193,50 @@ const toBackendDateTime = (value) => {
 
   const normalized = text.replace('T', ' ')
   return normalized.length === 16 ? `${normalized}:00` : normalized
+}
+
+const shiftDateByMonths = (value, monthOffset) => {
+  const date = new Date(value.getTime())
+  const day = date.getDate()
+  date.setDate(1)
+  date.setMonth(date.getMonth() + monthOffset)
+  const monthLastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  date.setDate(Math.min(day, monthLastDay))
+  return date
+}
+
+const resolveTimeDetailRange = () => {
+  const start = toDate(props.startTime)
+  const now = new Date()
+  if (!start || Number.isNaN(now.getTime())) {
+    return null
+  }
+
+  const fullRange = {
+    beginTime: toBackendDateTime(props.startTime),
+    endTime: formatDateTimeLabel(now),
+  }
+  if (!fullRange.beginTime || !fullRange.endTime || timeDetailRangeFilter.value === 'all') {
+    return fullRange
+  }
+
+  const monthCount = Number(timeDetailRangeFilter.value)
+  if (Number.isFinite(monthCount) && monthCount > 0) {
+    return {
+      beginTime: formatDateTimeLabel(shiftDateByMonths(now, -monthCount)),
+      endTime: fullRange.endTime,
+    }
+  }
+
+  const threeMonthCutoff = shiftDateByMonths(now, -3)
+  if (threeMonthCutoff.getTime() <= start.getTime()) {
+    return null
+  }
+
+  return {
+    beginTime: fullRange.beginTime,
+    endTime: formatDateTimeLabel(threeMonthCutoff),
+  }
 }
 
 const toCountArray = (values, length) =>
@@ -700,7 +755,7 @@ const sensitiveOutageTotal = computed(() => {
   return sensitiveUserOutageRows.value.length
 })
 
-const mapDetailTableRow = (record, index) => {
+const mapDetailTableRow = (record, index, page = detailCurrentPage.value) => {
   const consNo = toText(readFieldValue(record, ['consNo', 'cons_no', 'userNo', 'userId', 'consumerNo']))
   const consName = toText(readFieldValue(record, ['consName', 'cons_name', 'name', 'userName', 'orgName']))
   const outageCount = Math.max(Number(readFieldValue(record, ['outageCount', 'outage_count'])) || 0, 0)
@@ -716,7 +771,7 @@ const mapDetailTableRow = (record, index) => {
     '-',
   )
   const outageEvents = Array.isArray(record?.outageEvents) ? record.outageEvents : []
-  const id = `${consNo}-${consName}-${detailCurrentPage.value}-${index + 1}`
+  const id = `${consNo}-${consName}-${page}-${index + 1}`
 
   return {
     id,
@@ -844,6 +899,75 @@ const loadDetailTableRows = async (targetPage = detailCurrentPage.value) => {
   }
 }
 
+const loadTimeDetailTableRows = async (targetPage = timeDetailCurrentPage.value) => {
+  const queryRange = resolveTimeDetailRange()
+  if (!queryRange?.beginTime || !queryRange?.endTime) {
+    timeDetailTableRows.value = []
+    timeDetailTableTotal.value = 0
+    timeDetailTablePerPage.value = DETAIL_PAGE_SIZE
+    timeDetailTableLoading.value = false
+    timeDetailTableError.value = ''
+    return
+  }
+
+  const payload = {
+    ...queryRange,
+    userLevel: 'key_sensitive',
+    page: Math.max(1, Number(targetPage) || 1),
+    perPage: DETAIL_PAGE_SIZE,
+  }
+  const countyId = String(props.countyId || '').trim()
+  if (countyId) {
+    payload.countyId = countyId
+  } else if (countyListCityId) {
+    payload.cityId = countyListCityId
+  }
+
+  if (
+    timeDetailOutageCountFilter.value === '1' ||
+    timeDetailOutageCountFilter.value === '2' ||
+    timeDetailOutageCountFilter.value === '3+'
+  ) {
+    payload.outageCount = timeDetailOutageCountFilter.value
+  }
+
+  const requestId = timeDetailTableRequestId.value + 1
+  timeDetailTableRequestId.value = requestId
+  timeDetailTableLoading.value = true
+  timeDetailTableError.value = ''
+  timeDetailTableRows.value = []
+
+  try {
+    const response = await queryCountyUserOutageStats(payload)
+    if (requestId !== timeDetailTableRequestId.value) {
+      return
+    }
+
+    const data = response?.data || {}
+    const list = Array.isArray(data?.list) ? data.list : []
+    const total = Math.max(Number(data?.total) || 0, 0)
+    const page = Math.max(Number(data?.page) || payload.page, 1)
+    const perPage = Math.max(Number(data?.perPage) || payload.perPage, 1)
+
+    timeDetailCurrentPage.value = page
+    timeDetailTablePerPage.value = perPage
+    timeDetailTableTotal.value = total
+    timeDetailTableRows.value = list.map((item, index) => mapDetailTableRow(item, index, page))
+  } catch {
+    if (requestId !== timeDetailTableRequestId.value) {
+      return
+    }
+    timeDetailTableRows.value = []
+    timeDetailTableTotal.value = 0
+    timeDetailTablePerPage.value = DETAIL_PAGE_SIZE
+    timeDetailTableError.value = '时间详情加载失败，请稍后重试。'
+  } finally {
+    if (requestId === timeDetailTableRequestId.value) {
+      timeDetailTableLoading.value = false
+    }
+  }
+}
+
 const detailTotalPages = computed(() => {
   if (detailTableTotal.value <= 0) {
     return 1
@@ -852,6 +976,7 @@ const detailTotalPages = computed(() => {
 })
 
 const pagedImportantUserOutageRows = computed(() => detailTableRows.value)
+const pagedTimeDetailRows = computed(() => timeDetailTableRows.value)
 
 const detailPageButtons = computed(() => {
   const total = detailTotalPages.value
@@ -862,6 +987,38 @@ const detailPageButtons = computed(() => {
   const half = Math.floor(DETAIL_PAGE_MAX_BUTTONS / 2)
   let start = detailCurrentPage.value - half
   let end = detailCurrentPage.value + half
+  if (start < 1) {
+    start = 1
+    end = DETAIL_PAGE_MAX_BUTTONS
+  }
+  if (end > total) {
+    end = total
+    start = total - DETAIL_PAGE_MAX_BUTTONS + 1
+  }
+
+  const pages = []
+  for (let page = start; page <= end; page += 1) {
+    pages.push(page)
+  }
+  return pages
+})
+
+const timeDetailTotalPages = computed(() => {
+  if (timeDetailTableTotal.value <= 0) {
+    return 1
+  }
+  return Math.max(Math.ceil(timeDetailTableTotal.value / timeDetailTablePerPage.value), 1)
+})
+
+const timeDetailPageButtons = computed(() => {
+  const total = timeDetailTotalPages.value
+  if (total <= DETAIL_PAGE_MAX_BUTTONS) {
+    return Array.from({ length: total }, (_, index) => index + 1)
+  }
+
+  const half = Math.floor(DETAIL_PAGE_MAX_BUTTONS / 2)
+  let start = timeDetailCurrentPage.value - half
+  let end = timeDetailCurrentPage.value + half
   if (start < 1) {
     start = 1
     end = DETAIL_PAGE_MAX_BUTTONS
@@ -893,6 +1050,9 @@ const closeDetailPage = () => {
   detailModalError.value = ''
   detailModalVisible.value = false
   selectedUserDetail.value = null
+  timeDetailTableRequestId.value += 1
+  timeDetailTableLoading.value = false
+  timeDetailModalVisible.value = false
 }
 
 const applyDetailSearch = () => {
@@ -925,15 +1085,55 @@ const jumpToDetailPage = () => {
   goDetailPage(Math.round(parsed))
 }
 
-const openUserDetailModal = async (item) => {
+const openTimeDetailModal = () => {
+  timeDetailRangeFilter.value = '2'
+  timeDetailOutageCountFilter.value = 'all'
+  timeDetailCurrentPage.value = 1
+  timeDetailJumpPageInput.value = ''
+  timeDetailModalVisible.value = true
+  void loadTimeDetailTableRows(1)
+}
+
+const closeTimeDetailModal = () => {
+  timeDetailTableRequestId.value += 1
+  timeDetailTableLoading.value = false
+  timeDetailTableError.value = ''
+  timeDetailModalVisible.value = false
+}
+
+const goTimeDetailPage = (page) => {
+  if (!Number.isFinite(page)) {
+    return
+  }
+  const target = Math.max(1, Math.min(timeDetailTotalPages.value, page))
+  timeDetailCurrentPage.value = target
+  timeDetailJumpPageInput.value = ''
+  if (timeDetailModalVisible.value) {
+    void loadTimeDetailTableRows(target)
+  }
+}
+
+const jumpToTimeDetailPage = () => {
+  const input = String(timeDetailJumpPageInput.value ?? '').trim()
+  if (!input) {
+    return
+  }
+  const parsed = Number(input)
+  if (!Number.isFinite(parsed)) {
+    return
+  }
+  goTimeDetailPage(Math.round(parsed))
+}
+
+const openUserDetailModal = async (item, queryRange = null) => {
   detailModalVisible.value = true
   detailModalLoading.value = true
   detailModalError.value = ''
   selectedUserDetail.value = mapUserOutageDetailData({}, item)
 
   const consNo = String(item?.consNo || '').trim()
-  const beginTime = toBackendDateTime(props.startTime)
-  const endTime = toBackendDateTime(props.endTime)
+  const beginTime = queryRange?.beginTime || toBackendDateTime(props.startTime)
+  const endTime = queryRange?.endTime || toBackendDateTime(props.endTime)
   if (!consNo) {
     detailModalLoading.value = false
     detailModalError.value = '用户编号缺失，无法加载详情。'
@@ -977,6 +1177,10 @@ const openUserDetailModal = async (item) => {
   }
 }
 
+const openTimeDetailUserModal = (item) => {
+  void openUserDetailModal(item, resolveTimeDetailRange())
+}
+
 const closeUserDetailModal = () => {
   detailModalRequestId.value += 1
   detailModalLoading.value = false
@@ -995,8 +1199,26 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => timeDetailTotalPages.value,
+  (total) => {
+    if (timeDetailCurrentPage.value > total) {
+      timeDetailCurrentPage.value = total
+    }
+  },
+  { immediate: true },
+)
+
 watch(detailOutageCountFilter, () => {
   goDetailPage(1)
+})
+
+watch(timeDetailRangeFilter, () => {
+  goTimeDetailPage(1)
+})
+
+watch(timeDetailOutageCountFilter, () => {
+  goTimeDetailPage(1)
 })
 
 watch(
@@ -1006,6 +1228,9 @@ watch(
     detailJumpPageInput.value = ''
     if (detailPageVisible.value) {
       void loadDetailTableRows(1)
+    }
+    if (timeDetailModalVisible.value) {
+      void loadTimeDetailTableRows(1)
     }
   },
 )
@@ -1180,6 +1405,9 @@ watch(
           <button type="button" class="trend-detail-query-btn" :disabled="detailTableLoading" @click="applyDetailSearch">
             查询
           </button>
+          <button type="button" class="trend-detail-query-btn" @click="openTimeDetailModal">
+            时间详情
+          </button>
           <div class="trend-detail-count-filter-wrap">
             <span class="trend-detail-count-filter-label">停电次数</span>
             <select v-model="detailOutageCountFilter" class="trend-detail-count-filter">
@@ -1252,6 +1480,97 @@ watch(
           </div>
         </footer>
       </section>
+
+      <div v-if="timeDetailModalVisible" class="trend-time-detail-modal-mask" @click.self="closeTimeDetailModal">
+        <article class="trend-time-detail-modal">
+          <header class="trend-time-detail-modal-head">
+            <h4>时间详情</h4>
+            <button type="button" class="trend-detail-close" @click="closeTimeDetailModal">×</button>
+          </header>
+
+          <div class="trend-time-detail-filter-bar">
+            <label class="trend-time-detail-filter">
+              <span>时间</span>
+              <select v-model="timeDetailRangeFilter" class="trend-detail-count-filter">
+                <option value="1">近期1个月内</option>
+                <option value="2">近期2个月内</option>
+                <option value="3">近期3个月内</option>
+                <option value="older">近期3个月以上</option>
+              </select>
+            </label>
+            <label class="trend-time-detail-filter">
+              <span>停电次数</span>
+              <select v-model="timeDetailOutageCountFilter" class="trend-detail-count-filter">
+                <option value="all">全部</option>
+                <option value="1">1次</option>
+                <option value="2">2次</option>
+                <option value="3+">3次及以上</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="trend-detail-grid-wrap trend-time-detail-grid-wrap">
+            <ul class="trend-detail-grid-body">
+              <li class="trend-detail-grid trend-detail-grid-head">
+                <span>用户编号</span>
+                <span>用户名称</span>
+                <span title="区县">区县</span>
+                <span title="停电次数">停电次数</span>
+                <span>所属行业</span>
+                <span>详情</span>
+              </li>
+              <li v-for="item in pagedTimeDetailRows" :key="`time-detail-${item.id}`" class="trend-detail-grid trend-detail-grid-row">
+                <span class="trend-detail-cell hover-expand-cell" :data-full="item.consNo">
+                  <span class="trend-detail-cell-text">{{ item.consNo }}</span>
+                </span>
+                <span class="trend-detail-cell hover-expand-cell" :data-full="item.consName">
+                  <span class="trend-detail-cell-text">{{ item.consName }}</span>
+                </span>
+                <span class="trend-detail-cell hover-expand-cell" :data-full="item.countyName">
+                  <span class="trend-detail-cell-text">{{ item.countyName }}</span>
+                </span>
+                <span class="trend-detail-cell hover-expand-cell" :data-full="String(item.outageCount)">
+                  <span class="trend-detail-cell-text">{{ item.outageCount }}</span>
+                </span>
+                <span class="trend-detail-cell trend-detail-period-cell hover-expand-cell" :data-full="item.tradeName">
+                  <span class="trend-detail-cell-text">{{ item.tradeName }}</span>
+                </span>
+                <button type="button" class="detail-btn" @click="openTimeDetailUserModal(item)">详情</button>
+              </li>
+            </ul>
+
+            <p v-if="timeDetailTableLoading" class="empty-tip">时间详情加载中...</p>
+            <p v-else-if="timeDetailTableError" class="empty-tip">{{ timeDetailTableError }}</p>
+            <p v-else-if="pagedTimeDetailRows.length === 0" class="empty-tip">当前时间段暂无重点用户停电明细。</p>
+          </div>
+
+          <footer class="user-detail-pagination" v-if="timeDetailTableTotal > 0">
+            <button
+              v-for="page in timeDetailPageButtons"
+              :key="`time-detail-page-${page}`"
+              type="button"
+              class="page-btn"
+              :class="{ active: page === timeDetailCurrentPage }"
+              @click="goTimeDetailPage(page)"
+            >
+              {{ page }}
+            </button>
+
+            <div class="user-detail-page-jump">
+              <input
+                v-model="timeDetailJumpPageInput"
+                type="number"
+                min="1"
+                :max="timeDetailTotalPages"
+                class="user-detail-page-input"
+                placeholder="页码"
+                @keyup.enter="jumpToTimeDetailPage"
+              />
+              <button type="button" class="user-detail-page-jump-btn" @click="jumpToTimeDetailPage">跳转</button>
+            </div>
+          </footer>
+        </article>
+      </div>
 
       <div v-if="detailModalVisible && selectedUserDetail" class="user-detail-modal-mask" @click.self="closeUserDetailModal">
         <article class="user-detail-modal">
@@ -1545,7 +1864,7 @@ watch(
 
 .trend-detail-query-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -1594,6 +1913,69 @@ watch(
   font-size: 12px;
   color: #c4e7ff;
   white-space: nowrap;
+}
+
+.trend-time-detail-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 8, 20, 0.7);
+}
+
+.trend-time-detail-modal {
+  width: min(960px, 100%);
+  height: min(680px, calc(100vh - 48px));
+  min-height: 420px;
+  border: 1px solid rgba(118, 206, 255, 0.48);
+  border-radius: 10px;
+  background: #03182df7;
+  box-shadow: 0 20px 60px rgba(0, 8, 20, 0.62), inset 0 0 28px rgba(49, 126, 211, 0.14);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.trend-time-detail-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trend-time-detail-modal-head h4 {
+  margin: 0;
+  font-size: 18px;
+  color: #dff2ff;
+}
+
+.trend-time-detail-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.trend-time-detail-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: #c4e7ff;
+}
+
+.trend-time-detail-filter .trend-detail-count-filter {
+  min-width: 160px;
+}
+
+.trend-time-detail-grid-wrap {
+  min-height: 0;
 }
 
 .trend-detail-grid-wrap {
