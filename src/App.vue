@@ -1,4 +1,5 @@
 ﻿<script setup>
+import './style.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   queryCountyTrend,
@@ -99,6 +100,11 @@ const outageScopeSummaryData = ref(null)
 const outageScopeSummaryLoadingCount = ref(0)
 const outageScopeSummaryLoading = computed(() => outageScopeSummaryLoadingCount.value > 0)
 const countyWarningLightsData = ref([])
+const countyWarningPopupVisible = ref(false)
+const countyWarningPopupCounty = ref('')
+const countyWarningPopupEvents = ref([])
+const countyWarningPopupLoading = ref(false)
+const countyWarningPopupError = ref('')
 const countyTrendData = ref({
   labels: [],
   sensitiveSeries: [],
@@ -166,6 +172,7 @@ let outageDetailListRequestId = 0
 let outageEventsSummaryRequestId = 0
 let outageRangeChainsRequestId = 0
 let outageEventDetailRequestId = 0
+let countyWarningPopupRequestId = 0
 let suppressOutageDetailAutoReload = false
 const showUserDetailPage = ref(false)
 const userDetailModalVisible = ref(false)
@@ -861,6 +868,7 @@ const OUTAGE_DETAIL_DEFAULT_PAGE = 1
 const OUTAGE_DETAIL_DEFAULT_PER_PAGE = 10
 const OUTAGE_DETAIL_REMOTE_MAX_PER_PAGE = 500
 const OUTAGE_CHAINS_REMOTE_PAGE_SIZE = 4
+const COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE = 500
 
 const chunkArray = (list, size) => {
   if (!Array.isArray(list) || list.length === 0 || size <= 0) {
@@ -1682,6 +1690,34 @@ const joinNameList = (value) => {
     .join('、')
 }
 
+const getOutageAffectedConsCount = (record, fallbackCount = 0) => {
+  const directCount = readFieldValue(record, [
+    'affectedUsers',
+    'affected_users',
+    'affectedConsCnt',
+    'affected_cons_cnt',
+  ])
+
+  if (directCount !== undefined && directCount !== null && String(directCount).trim() !== '') {
+    return Math.max(safeNumber(directCount), 0)
+  }
+
+  const importantUserCount = safeNumber(
+    readFieldValue(record, ['importantUserCount', 'important_user_count', 'keyUserCount', 'key_user_count', 'keyUsers']),
+  )
+  const sensitiveUserCount = safeNumber(
+    readFieldValue(record, ['sensitiveUserCount', 'sensitive_user_count', 'sensitiveUsers']),
+  )
+  const normalUserCount = safeNumber(readFieldValue(record, ['normalUserCount', 'normal_user_count', 'normalUsers']))
+  const totalUserCount = importantUserCount + sensitiveUserCount + normalUserCount
+
+  if (totalUserCount > 0) {
+    return totalUserCount
+  }
+
+  return Math.max(safeNumber(fallbackCount), 0)
+}
+
 const mapOutageEventDetailForModal = (detailData, fallbackItem = null) => {
   const record = normalizeUserRecord(detailData)
   const fallback = fallbackItem && typeof fallbackItem === 'object' ? fallbackItem : {}
@@ -1717,10 +1753,7 @@ const mapOutageEventDetailForModal = (detailData, fallbackItem = null) => {
     endTime: hasEndTime ? endTimeRaw : '-',
     maintGroupName: toDisplayText(readFieldValue(record, ['maintGroupName', 'maint_group_name']) || fallback?.maintGroupName),
     countyName: toDisplayText(readFieldValue(record, ['countyName', 'county_name']) || fallback?.countyName),
-    affectedConsCnt: Math.max(
-      safeNumber(readFieldValue(record, ['affectedUsers', 'affected_users', 'affectedConsCnt', 'affected_cons_cnt']) || fallback?.affectedConsCnt),
-      0,
-    ),
+    affectedConsCnt: getOutageAffectedConsCount(record, fallback?.affectedConsCnt),
     rdtFeederName: feederNamesText,
     rdtSubsName: toDisplayText(
       readFieldValue(record, ['substationName', 'substation_name', 'rdtSubsName', 'rdt_subs_name']) || fallback?.rdtSubsName,
@@ -1794,7 +1827,7 @@ const mapOutageDetailRow = (item, index, page, perPage) => {
   const countyName = toCountyDisplayName(
     readFieldValue(item, ['countyName', 'county_name', 'rdtCountyName', 'rdt_county_name']) || '-',
   ) || '-'
-  const affectedConsCnt = Math.max(safeNumber(item?.affectedUsers ?? item?.affectedConsCnt ?? item?.affected_cons_cnt), 0)
+  const affectedConsCnt = getOutageAffectedConsCount(item)
   const outageNatureCode = item?.outageNature || item?.outage_nature || item?.code || ''
   const beginTime = String(item?.beginTime || item?.begin_time || '-').trim() || '-'
   const endTimeRaw = String(item?.endTime || item?.end_time || '').trim()
@@ -1824,6 +1857,118 @@ const mapOutageDetailRow = (item, index, page, perPage) => {
     rdtSubsName: String(item?.rdtSubsName || item?.rdt_subs_name || item?.substationName || item?.substation_name || '-').trim() || '-',
     faultEquipName: String(item?.faultEquipName || item?.fault_equip_name || item?.equipmentName || item?.equipment_name || '-').trim() || '-',
     outageReason: String(item?.outageReason || item?.outage_reason || '-').trim() || '-',
+  }
+}
+
+const closeCountyWarningPopup = () => {
+  countyWarningPopupVisible.value = false
+  countyWarningPopupCounty.value = ''
+  countyWarningPopupEvents.value = []
+  countyWarningPopupLoading.value = false
+  countyWarningPopupError.value = ''
+  countyWarningPopupRequestId += 1
+}
+
+const openCountyWarningPopup = async (item) => {
+  const selectedItem = item && typeof item === 'object' ? item : {}
+  const countyName = toCountyDisplayName(selectedItem.countyName || selectedItem.name || '供电单位')
+  const beginTime = toBackendDateTime(queryStartTime.value)
+  const endTime = toBackendDateTime(queryEndTime.value)
+  const countyId = getCountyWarningPopupCountyId(selectedItem)
+  const requestId = ++countyWarningPopupRequestId
+
+  countyWarningPopupVisible.value = true
+  countyWarningPopupCounty.value = countyName
+  countyWarningPopupEvents.value = []
+  countyWarningPopupLoading.value = false
+  countyWarningPopupError.value = ''
+
+  if (!beginTime || !endTime) {
+    countyWarningPopupError.value = '请完整选择开始和结束时间。'
+    return
+  }
+
+  const parsedBeginTime = parseBackendDateTime(beginTime)
+  const parsedEndTime = parseBackendDateTime(endTime)
+  if (!parsedBeginTime || !parsedEndTime || parsedBeginTime > parsedEndTime) {
+    countyWarningPopupError.value = '开始时间不能晚于结束时间。'
+    return
+  }
+
+  if (!countyId) {
+    countyWarningPopupError.value = '当前警示灯缺少区县ID，无法查询详情。'
+    return
+  }
+
+  countyWarningPopupLoading.value = true
+
+  try {
+    const chainMap = new Map()
+    const fetchedPageKeys = new Set()
+    let page = 1
+    let totalPages = null
+
+    while (totalPages === null || page <= totalPages) {
+      const payload = buildCountyWarningPopupChainsPayload({
+        selectedItem: { ...selectedItem, countyId },
+        beginTime,
+        endTime,
+        page,
+      })
+      const response = await queryRightPanelOutageChains(payload)
+      if (requestId !== countyWarningPopupRequestId) {
+        return
+      }
+
+      const remoteData = resolveOutageChainsResponseData(response) || {}
+      const remoteList = Array.isArray(remoteData.list) ? remoteData.list : []
+      const total = safeNumber(remoteData.total)
+
+      if (total > 0) {
+        totalPages = Math.max(1, Math.ceil(total / COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE))
+      } else if (remoteList.length < COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE) {
+        totalPages = page
+      }
+
+      const pageKeys = remoteList.map((chain, index) =>
+        getCountyWarningPopupChainKey(chain, (page - 1) * COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE + index),
+      )
+      if (remoteList.length > 0 && pageKeys.every((key) => fetchedPageKeys.has(key))) {
+        break
+      }
+      pageKeys.forEach((key) => fetchedPageKeys.add(key))
+
+      remoteList.forEach((chain, index) => {
+        const key = getCountyWarningPopupChainKey(chain, (page - 1) * COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE + index)
+        if (!chainMap.has(key)) {
+          chainMap.set(key, chain)
+        }
+      })
+
+      if (remoteList.length === 0) {
+        break
+      }
+      page += 1
+    }
+
+    if (requestId !== countyWarningPopupRequestId) {
+      return
+    }
+
+    countyWarningPopupEvents.value = Array.from(chainMap.values())
+      .map((chain, index) => mapCountyWarningPopupChainEvent(chain, index))
+      .sort((a, b) => b.sortTime - a.sortTime)
+  } catch (error) {
+    if (requestId !== countyWarningPopupRequestId) {
+      return
+    }
+    console.error(error)
+    countyWarningPopupEvents.value = []
+    countyWarningPopupError.value = '停电事件加载失败，请稍后重试。'
+  } finally {
+    if (requestId === countyWarningPopupRequestId) {
+      countyWarningPopupLoading.value = false
+    }
   }
 }
 
@@ -2057,6 +2202,120 @@ const mapOutageRangeChainRow = (item, index = 0) => {
   }
 }
 
+const getCountyWarningPopupCountyId = (selectedItem) => {
+  const directCountyId = String(
+    selectedItem?.countyId ||
+      selectedItem?.county_id ||
+      selectedItem?.rdtCountyId ||
+      selectedItem?.rdt_county_id ||
+      '',
+  ).trim()
+  if (directCountyId) {
+    return directCountyId
+  }
+
+  const countyName = normalizeCountyName(selectedItem?.countyName || selectedItem?.name || '')
+  const matchedCounty = countyList.value.find((item) => normalizeCountyName(item.countyName) === countyName)
+  return String(matchedCounty?.countyId || '').trim()
+}
+
+const buildCountyWarningPopupChainsPayload = ({ selectedItem, beginTime, endTime, page }) => ({
+  beginTime,
+  endTime,
+  countyId: getCountyWarningPopupCountyId(selectedItem),
+  page: Math.max(1, Math.round(safeNumber(page) || 1)),
+  perPage: COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE,
+})
+
+const getCountyWarningPopupUserCount = (item, countKeys, listKeys = []) => {
+  for (const listKey of listKeys) {
+    const value = item?.[listKey]
+    if (Array.isArray(value)) {
+      return value.length
+    }
+  }
+
+  for (const countKey of countKeys) {
+    const value = readFieldValue(item, [countKey])
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return Math.max(safeNumber(value), 0)
+    }
+  }
+
+  return 0
+}
+
+const getCountyWarningPopupChainTimeValue = (item) => {
+  const date =
+    parseBackendDateTime(
+      readFieldValue(item, [
+        'beginTime',
+        'begin_time',
+        'outageBeginTime',
+        'outage_begin_time',
+        'startTime',
+        'start_time',
+        'outageTime',
+        'outage_time',
+        'occurTime',
+        'occur_time',
+      ]),
+    ) ||
+    parseBackendDateTime(
+      readFieldValue(item, [
+        'endTime',
+        'end_time',
+        'outageEndTime',
+        'outage_end_time',
+        'restoreTime',
+        'restore_time',
+      ]),
+    )
+  return date ? date.getTime() : 0
+}
+
+const getCountyWarningPopupChainKey = (item, index = 0) => {
+  const outageNumber = String(readFieldValue(item, ['outageNumber', 'outage_number', 'eventNo', 'event_no']) || '').trim()
+  if (outageNumber) {
+    return outageNumber
+  }
+
+  return [
+    readFieldValue(item, ['beginTime', 'begin_time']) || '',
+    readFieldValue(item, ['feederId', 'feeder_id', 'rdtFeederId', 'rdt_feeder_id']) || '',
+    readFieldValue(item, ['substationId', 'substation_id', 'rdtSubsId', 'rdt_subs_id']) || '',
+    index,
+  ].join('|')
+}
+
+const mapCountyWarningPopupChainEvent = (item, index = 0) => {
+  const importantUserCount = getCountyWarningPopupUserCount(
+    item,
+    ['importantUserCount', 'important_user_count', 'keyUserCount', 'key_user_count', 'keyUsers'],
+    ['importantUsers'],
+  )
+  const sensitiveUserCount = getCountyWarningPopupUserCount(
+    item,
+    ['sensitiveUserCount', 'sensitive_user_count', 'sensitiveUsers'],
+    ['sensitiveUsers'],
+  )
+  const normalUserCount = getCountyWarningPopupUserCount(item, [
+    'normalUserCount',
+    'normal_user_count',
+    'normalUsers',
+  ])
+
+  return {
+    id: getCountyWarningPopupChainKey(item, index),
+    outageNumber: String(readFieldValue(item, ['outageNumber', 'outage_number', 'eventNo', 'event_no']) || '-').trim() || '-',
+    importantUserCount,
+    sensitiveUserCount,
+    normalUserCount,
+    affectedConsCnt: importantUserCount + sensitiveUserCount + normalUserCount,
+    sortTime: getCountyWarningPopupChainTimeValue(item),
+  }
+}
+
 const loadRightPanelOutageChains = async ({ beginTime, endTime, page = outageRangeChainsCurrentPage.value } = {}) => {
   if (!showOutageRangeAssessmentPage.value) {
     return null
@@ -2159,6 +2418,12 @@ const loadDashboardData = async (customRange = null) => {
   faultSummaryData.value = null
   outageScopeSummaryData.value = null
   countyWarningLightsData.value = []
+  countyWarningPopupVisible.value = false
+  countyWarningPopupCounty.value = ''
+  countyWarningPopupEvents.value = []
+  countyWarningPopupLoading.value = false
+  countyWarningPopupError.value = ''
+  countyWarningPopupRequestId += 1
   outageRangeChainsData.value = []
   outageRangeChainsTotal.value = 0
   outageRangeChainsCurrentPage.value = 1
@@ -2255,6 +2520,12 @@ const loadDashboardData = async (customRange = null) => {
     faultSummaryData.value = null
     outageScopeSummaryData.value = null
     countyWarningLightsData.value = []
+    countyWarningPopupVisible.value = false
+    countyWarningPopupCounty.value = ''
+    countyWarningPopupEvents.value = []
+    countyWarningPopupLoading.value = false
+    countyWarningPopupError.value = ''
+    countyWarningPopupRequestId += 1
     outageRangeChainsData.value = []
     outageRangeChainsTotal.value = 0
     outageRangeChainsCurrentPage.value = 1
@@ -2327,6 +2598,9 @@ const mapOverviewCountyWarningLights = (rawList) => {
     }
 
     const countyName = toCountyDisplayName(item.countyName || item.name || item.county || item.countyLabel || '')
+    const countyId = String(
+      item.countyId || item.county_id || item.rdtCountyId || item.rdt_county_id || item.id || '',
+    ).trim()
     const countyKey = normalizeCountyName(countyName)
     if (!countyKey) {
       return
@@ -2348,11 +2622,13 @@ const mapOverviewCountyWarningLights = (rawList) => {
     if (existing) {
       existing.outageCount += outageCount
       existing.hasOutage = existing.hasOutage || hasOutage || existing.outageCount > 0
+      existing.countyId = existing.countyId || countyId
       return
     }
 
     warningMap.set(countyKey, {
       countyName,
+      countyId,
       outageCount,
       hasOutage: hasOutage || outageCount > 0,
     })
@@ -4535,6 +4811,9 @@ watch(outageDetailRows, (rows) => {
 watch(selectedRegion, (regionName) => {
   outageDetailCurrentPage.value = 1
   closeOutageDetailModal()
+  if (countyWarningPopupVisible.value) {
+    closeCountyWarningPopup()
+  }
   if (regionName === '全部') {
     selectedKeyUserCounty.value = ''
   } else {
@@ -5364,7 +5643,17 @@ onBeforeUnmount(() => {
         <div v-show="!isRightCollapsed" class="panel-inner">
           <section class="card module-card">
             <template v-if="activePageTab === 'outageUsers'">
-              <CountyWarningLightsCard :county-warning-lights="countyWarningLights" :loading="loading" />
+              <CountyWarningLightsCard
+                :county-warning-lights="countyWarningLights"
+                :loading="loading"
+                :popup-visible="countyWarningPopupVisible"
+                :popup-county-name="countyWarningPopupCounty"
+                :popup-events="countyWarningPopupEvents"
+                :popup-loading="countyWarningPopupLoading"
+                :popup-error="countyWarningPopupError"
+                @select-county="openCountyWarningPopup"
+                @close-popup="closeCountyWarningPopup"
+              />
 
               <FaultLocationModuleCard
                 :selected-fault-county="selectedRegion"

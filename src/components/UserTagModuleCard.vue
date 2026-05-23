@@ -1,4 +1,5 @@
 ﻿<script setup>
+import '../style.css'
 import { computed, ref } from 'vue'
 //负责“用户标签识别/重点敏感用户”这块
 //显示标签占比、重点/敏感分类饼图、筛选查询、分页表格、详情弹窗
