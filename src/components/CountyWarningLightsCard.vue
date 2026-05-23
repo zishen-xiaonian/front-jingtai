@@ -1,4 +1,7 @@
-<script setup>
+﻿<script setup>
+import '../style.css'
+import { computed, ref, watch } from 'vue'
+
 const props = defineProps({
   countyWarningLights: {
     type: Array,
@@ -8,6 +11,99 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  popupVisible: {
+    type: Boolean,
+    default: false,
+  },
+  popupCountyName: {
+    type: String,
+    default: '',
+  },
+  popupEvents: {
+    type: Array,
+    default: () => [],
+  },
+  popupLoading: {
+    type: Boolean,
+    default: false,
+  },
+  popupError: {
+    type: String,
+    default: '',
+  },
+})
+
+const emit = defineEmits(['select-county', 'close-popup'])
+
+const POPUP_PAGE_SIZE = 3
+
+const popupCurrentPage = ref(1)
+
+const popupTotalPages = computed(() => Math.max(1, Math.ceil(props.popupEvents.length / POPUP_PAGE_SIZE)))
+
+const popupPageStartIndex = computed(() => (popupCurrentPage.value - 1) * POPUP_PAGE_SIZE)
+
+const pagedPopupEvents = computed(() =>
+  props.popupEvents.slice(popupPageStartIndex.value, popupPageStartIndex.value + POPUP_PAGE_SIZE),
+)
+
+const popupPageItems = computed(() => {
+  const total = popupTotalPages.value
+  const current = popupCurrentPage.value
+
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, index) => index + 1)
+  }
+
+  const pages = new Set([1, total, current, current - 1, current + 1])
+
+  if (current <= 3) {
+    pages.add(2)
+    pages.add(3)
+    pages.add(4)
+  }
+
+  if (current >= total - 2) {
+    pages.add(total - 3)
+    pages.add(total - 2)
+    pages.add(total - 1)
+  }
+
+  const sortedPages = Array.from(pages)
+    .filter((page) => page >= 1 && page <= total)
+    .sort((a, b) => a - b)
+
+  return sortedPages.reduce((items, page, index) => {
+    const previousPage = sortedPages[index - 1]
+
+    if (previousPage && page - previousPage > 1) {
+      items.push(`ellipsis-${previousPage}-${page}`)
+    }
+
+    items.push(page)
+    return items
+  }, [])
+})
+
+const setPopupPage = (page) => {
+  if (typeof page !== 'number') {
+    return
+  }
+
+  popupCurrentPage.value = Math.min(Math.max(page, 1), popupTotalPages.value)
+}
+
+watch(
+  () => [props.popupVisible, props.popupCountyName],
+  () => {
+    popupCurrentPage.value = 1
+  },
+)
+
+watch(popupTotalPages, (total) => {
+  if (popupCurrentPage.value > total) {
+    popupCurrentPage.value = total
+  }
 })
 </script>
 
@@ -20,118 +116,78 @@ const props = defineProps({
 
     <ul class="county-warning-lights-grid">
       <li v-for="item in props.countyWarningLights" :key="item.countyName" class="county-warning-light-item">
-        <span class="county-warning-light-dot" :class="item.hasOutage ? 'danger' : 'safe'"></span>
-        <span class="county-warning-light-name">{{ item.countyName }}</span>
+        <button
+          type="button"
+          class="county-warning-light-btn"
+          :class="{ active: props.popupVisible && props.popupCountyName === item.countyName }"
+          @click="emit('select-county', item)"
+        >
+          <span class="county-warning-light-dot" :class="item.hasOutage ? 'danger' : 'safe'"></span>
+          <span class="county-warning-light-name">{{ item.countyName }}</span>
+        </button>
       </li>
       <li v-if="props.loading && props.countyWarningLights.length === 0" class="county-warning-light-loading">
         <span class="county-warning-light-spinner" aria-hidden="true"></span>
         <span>数据加载中...</span>
       </li>
     </ul>
+
+    <teleport to="body">
+      <div v-if="props.popupVisible" class="county-warning-popup-mask" @click.self="emit('close-popup')">
+        <div class="county-warning-popup-card">
+          <div class="county-warning-popup-head">
+            <h4>{{ props.popupCountyName || '供电单位' }}</h4>
+            <button type="button" class="county-warning-popup-close" aria-label="关闭" @click="emit('close-popup')">×</button>
+          </div>
+          <div class="county-warning-popup-body">
+            <div v-if="props.popupLoading" class="county-warning-popup-loading">
+              <span class="county-warning-light-spinner" aria-hidden="true"></span>
+              <span>停电事件加载中...</span>
+            </div>
+            <p v-else-if="props.popupError" class="county-warning-popup-empty">{{ props.popupError }}</p>
+            <p v-else-if="props.popupEvents.length === 0" class="county-warning-popup-empty">当前暂无停电事件</p>
+            <template v-else>
+              <ul class="county-warning-event-list">
+                <li
+                  v-for="(event, index) in pagedPopupEvents"
+                  :key="event?.id || event?.outageNumber || `${popupCurrentPage}-${index}`"
+                  class="county-warning-event-item"
+                >
+                  <div class="county-warning-event-title-row">
+                    <span class="county-warning-event-title">停电事件编号：{{ event.outageNumber || '-' }}</span>
+                  </div>
+                  <p>受影响用户总数：{{ event.affectedConsCnt ?? 0 }}户</p>
+                  <p>受影响重要用户数：{{ event.importantUserCount ?? 0 }}户</p>
+                  <p>受影响敏感用户数：{{ event.sensitiveUserCount ?? 0 }}户</p>
+                </li>
+              </ul>
+
+              <div v-if="popupTotalPages > 1" class="county-warning-pagination" aria-label="停电事件分页">
+                <template v-for="pageItem in popupPageItems" :key="pageItem">
+                  <span
+                    v-if="typeof pageItem !== 'number'"
+                    class="county-warning-page-ellipsis"
+                    aria-hidden="true"
+                  >
+                    ...
+                  </span>
+                  <button
+                    v-else
+                    type="button"
+                    class="county-warning-page-btn"
+                    :class="{ active: popupCurrentPage === pageItem }"
+                    :aria-current="popupCurrentPage === pageItem ? 'page' : undefined"
+                    @click="setPopupPage(pageItem)"
+                  >
+                    {{ pageItem }}
+                  </button>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </article>
 </template>
 
-<style scoped>
-.county-warning-lights-block {
-  gap: 10px;
-}
-
-.county-warning-lights-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.county-warning-lights-head h3 {
-  margin: 0;
-}
-
-.county-warning-lights-head p {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-sub);
-}
-
-.county-warning-lights-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-height: 216px;
-  align-content: start;
-  position: relative;
-}
-
-.county-warning-light-item {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(121, 200, 255, 0.28);
-  border-radius: 8px;
-  padding: 6px 8px;
-  background: #04213cad;
-}
-
-.county-warning-light-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  list-style: none;
-  color: rgba(196, 231, 255, 0.78);
-  font-size: 14px;
-}
-
-.county-warning-light-spinner {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid rgba(126, 193, 245, 0.26);
-  border-top-color: #7ed8ff;
-  animation: county-warning-light-spin 0.8s linear infinite;
-}
-
-@keyframes county-warning-light-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.county-warning-light-dot {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border-radius: 50%;
-}
-
-.county-warning-light-dot.safe {
-  background: radial-gradient(circle at 30% 30%, #b8ffd8 0%, #4bfbac 72%, #23c77d 100%);
-  box-shadow: 0 0 8px rgba(75, 251, 172, 0.6);
-}
-
-.county-warning-light-dot.danger {
-  background: radial-gradient(circle at 30% 30%, #ffc5c5 0%, #ff6464 72%, #d73838 100%);
-  box-shadow: 0 0 8px rgba(255, 100, 100, 0.62);
-}
-
-.county-warning-light-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: #e8f6ff;
-}
-
-@media (max-width: 760px) {
-  .county-warning-lights-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-</style>

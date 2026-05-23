@@ -1,4 +1,5 @@
 ﻿<script setup>
+import '../style.css'
 import { computed, ref } from 'vue'
 
 const props = defineProps({

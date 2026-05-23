@@ -1,4 +1,5 @@
 ﻿<script setup>
+import '../style.css'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -282,52 +283,3 @@ watch(
   </section>
 </template>
 
-<style scoped>
-.outage-range-summary-block {
-  gap: 6px;
-  padding: 8px;
-}
-
-.outage-range-summary-block .summary-grid {
-  gap: 6px;
-}
-
-.outage-range-summary-block .summary-card {
-  padding: 6px 8px;
-}
-
-.outage-range-summary-block .summary-card p {
-  line-height: 1.1;
-}
-
-.outage-range-summary-block .summary-card strong {
-  margin-top: 4px;
-  font-size: 21px;
-}
-
-.outage-summary-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1;
-  color: #c4e7ff;
-  white-space: nowrap;
-}
-
-.outage-summary-spinner {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  border-radius: 50%;
-  border: 2px solid rgba(126, 193, 245, 0.26);
-  border-top-color: #7ed8ff;
-  animation: outage-summary-spin 0.8s linear infinite;
-}
-
-@keyframes outage-summary-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-</style>
