@@ -2489,51 +2489,46 @@ const loadDashboardData = async (customRange = null) => {
     }
 
     const [
-      tagStatsResponse,
-      listRecords,
-      users,
-    ] = await Promise.all(requests)
+      tagStatsResult,
+      listRecordsResult,
+      usersResult,
+      ...otherResults
+    ] = await Promise.allSettled(requests)
 
-    outageIndexRecords.value = []
-    tagStatsOverview.value = tagStatsResponse
-    outageEvents.value = listRecords.map((item, index) => normalizeOutageEventRecord(item, index))
-    outageUsers.value = users
+    if (tagStatsResult.status === 'fulfilled') {
+      tagStatsOverview.value = tagStatsResult.value
+    }
 
-    if (outageUsers.value.length === 0 && outageEvents.value.length > 0) {
+    if (listRecordsResult.status === 'fulfilled') {
+      outageIndexRecords.value = []
+      outageEvents.value = listRecordsResult.value.map((item, index) => normalizeOutageEventRecord(item, index))
+    }
+
+    if (usersResult.status === 'fulfilled') {
+      outageUsers.value = usersResult.value
+    }
+
+    const failedResult = [
+      tagStatsResult,
+      listRecordsResult,
+      usersResult,
+      ...otherResults,
+    ].find((result) => result.status === 'rejected')
+
+    if (failedResult) {
+      console.error(failedResult.reason)
+      dataError.value = `后端接口调用失败：${failedResult.reason?.message || '未知错误'}`
+    }
+
+    if (usersResult.status === 'fulfilled' && outageUsers.value.length === 0 && outageEvents.value.length > 0) {
       dataNotice.value = '用户清单接口返回为空，标签识别和设备影响明细可能偏小。'
     }
 
-    if (outageEvents.value.length === 0) {
+    if (listRecordsResult.status === 'fulfilled' && outageEvents.value.length === 0) {
       dataNotice.value = '接口调用成功，当前时间范围无停电事件数据。'
     }
   } catch (error) {
     console.error(error)
-    outageIndexRecords.value = []
-    outageEvents.value = []
-    outageUsers.value = []
-    tagStatsOverview.value = null
-    countyStatsRows.value = []
-    countyEquipmentStatsSummary.value = null
-    countyEquipmentListRows.value = []
-    countyEquipmentPageRows.value = []
-    countyEquipmentPageTotal.value = 0
-    faultSummaryData.value = null
-    outageScopeSummaryData.value = null
-    countyWarningLightsData.value = []
-    countyWarningPopupVisible.value = false
-    countyWarningPopupCounty.value = ''
-    countyWarningPopupEvents.value = []
-    countyWarningPopupLoading.value = false
-    countyWarningPopupError.value = ''
-    countyWarningPopupRequestId += 1
-    outageRangeChainsData.value = []
-    outageRangeChainsTotal.value = 0
-    outageRangeChainsCurrentPage.value = 1
-    outageEventsSummaryData.value = null
-    outageDetailRows.value = []
-    outageDetailTotal.value = 0
-    countyTrendData.value = buildDefaultCountyTrendData(beginTime, endTime)
-    countyOutageFreqData.value = buildDefaultCountyOutageFreqData()
     dataError.value = `后端接口调用失败：${error?.message || '未知错误'}`
   } finally {
     loading.value = false
@@ -3483,6 +3478,636 @@ const keyUsers = computed(() => {
     .sort((a, b) => b.keyScore - a.keyScore)
 
   return list.slice(0, 8)
+})
+
+const sensitiveDemandTypeMeta = [
+  { key: 'service', label: '服务态度', color: '#a988ff' },
+  { key: 'repair', label: '停电报修', color: '#68d4ff' },
+  { key: 'business', label: '业务办理', color: '#87a9ff' },
+  { key: 'restore', label: '复电进度', color: '#67f5a6' },
+  { key: 'voltage', label: '电压质量', color: '#ffd96b' },
+  { key: 'fee', label: '电费电价', color: '#ff8fa3' },
+]
+
+const sensitiveDemandStaticUsers = [
+  {
+    key: 'sd-user-1',
+    consNo: 'TS100861001',
+    consName: '张文华',
+    phone: '13803150001',
+    count: 16,
+    typeCounts: { service: 4, repair: 3, business: 3, restore: 2, voltage: 2, fee: 2 },
+  },
+  {
+    key: 'sd-user-2',
+    consNo: 'TS100861002',
+    consName: '李建国',
+    phone: '13803150002',
+    count: 14,
+    typeCounts: { service: 2, repair: 4, business: 2, restore: 3, voltage: 1, fee: 2 },
+  },
+  {
+    key: 'sd-user-3',
+    consNo: 'TS100861003',
+    consName: '王丽娜',
+    phone: '13803150003',
+    count: 12,
+    typeCounts: { service: 1, repair: 2, business: 4, restore: 2, voltage: 2, fee: 1 },
+  },
+  {
+    key: 'sd-user-4',
+    consNo: 'TS100861004',
+    consName: '赵明远',
+    phone: '13803150004',
+    count: 10,
+    typeCounts: { service: 2, repair: 1, business: 2, restore: 2, voltage: 2, fee: 1 },
+  },
+  {
+    key: 'sd-user-5',
+    consNo: 'TS100861005',
+    consName: '刘晓梅',
+    phone: '13803150005',
+    count: 8,
+    typeCounts: { service: 1, repair: 1, business: 1, restore: 2, voltage: 1, fee: 2 },
+  },
+]
+
+const sensitiveDemandUserTagMeta = [
+  { key: 'important', label: '重要客户', color: '#68d4ff' },
+  { key: 'sensitive', label: '敏感客户', color: '#ff8fa3' },
+  { key: 'special', label: '特殊客户', color: '#ffd96b' },
+]
+
+const sensitiveDemandFallbackUserTagCounts = {
+  important: 518,
+  sensitive: 426,
+  special: 237,
+}
+
+const sensitiveDemandAutoDetailMeta = [
+  {
+    key: 'important',
+    label: '重要客户',
+    color: '#68d4ff',
+    categories: [
+      { key: 'important-1', label: '一级客户', weight: 128, color: '#68d4ff' },
+      { key: 'important-2', label: '二级客户', weight: 114, color: '#89e0ff' },
+      { key: 'important-3', label: '三级客户', weight: 103, color: '#4ebdf1' },
+      { key: 'important-4', label: '四级客户', weight: 91, color: '#3aa1dc' },
+      { key: 'important-5', label: '五级客户', weight: 82, color: '#7aa9ff' },
+    ],
+  },
+  {
+    key: 'sensitive',
+    label: '敏感客户',
+    color: '#ff8fa3',
+    categories: [
+      { key: 'sensitive-risk', label: '高危客户', weight: 116, color: '#ff8fa3' },
+      { key: 'sensitive-frequent', label: '频繁停电客户', weight: 94, color: '#ff708c' },
+      { key: 'sensitive-service', label: '服务关注客户', weight: 86, color: '#ffabb9' },
+      { key: 'sensitive-malicious', label: '恶意诉求客户', weight: 72, color: '#e85f83' },
+      { key: 'sensitive-unreasonable', label: '不合理诉求客户', weight: 58, color: '#f08ac8' },
+    ],
+  },
+  {
+    key: 'special',
+    label: '特殊客户',
+    color: '#ffd96b',
+    categories: [
+      { key: 'special-electricity', label: '窃电或违约用电客户', weight: 73, color: '#ffd96b' },
+      { key: 'special-arrears', label: '拖欠电费客户', weight: 65, color: '#ffc94d' },
+      { key: 'special-info', label: '疑似套取信息客户', weight: 54, color: '#ffe28c' },
+      { key: 'special-harass', label: '骚扰来电客户', weight: 45, color: '#f2b84c' },
+    ],
+  },
+]
+
+const showSensitiveDemandAutoDetail = ref(false)
+const selectedSensitiveDemandAutoDetailKey = ref('important')
+const selectedSensitiveDemandUserKey = ref(sensitiveDemandStaticUsers[0]?.key || '')
+
+const sensitiveDemandTopUsers = computed(() => sensitiveDemandStaticUsers)
+
+const selectedSensitiveDemandUser = computed(() =>
+  sensitiveDemandTopUsers.value.find((item) => item.key === selectedSensitiveDemandUserKey.value) ||
+    sensitiveDemandTopUsers.value[0] ||
+    null,
+)
+
+const sensitiveDemandTypeRows = computed(() =>
+  sensitiveDemandTypeMeta.map((item) => ({
+    ...item,
+    count: Math.max(safeNumber(selectedSensitiveDemandUser.value?.typeCounts?.[item.key]), 0),
+  })),
+)
+
+const sensitiveDemandTypeTotal = computed(() =>
+  sensitiveDemandTypeRows.value.reduce((sum, item) => sum + Math.max(safeNumber(item.count), 0), 0),
+)
+
+const activeSensitiveDemandTypeKey = ref('')
+
+const sensitiveDemandPieBackground = computed(() => buildPieBackground(sensitiveDemandTypeRows.value.map((item) => ({
+  ...item,
+  rate: sensitiveDemandTypeTotal.value ? (item.count / sensitiveDemandTypeTotal.value) * 100 : 0,
+}))))
+
+const sensitiveDemandPieSegments = computed(() => {
+  let cursor = 0
+  return sensitiveDemandTypeRows.value
+    .map((item) => {
+      const value = sensitiveDemandTypeTotal.value ? (item.count / sensitiveDemandTypeTotal.value) * 100 : 0
+      const start = cursor
+      cursor = Math.min(100, cursor + value)
+      return {
+        ...item,
+        start,
+        value,
+      }
+    })
+    .filter((item) => item.value > 0)
+})
+
+const activeSensitiveDemandType = computed(() =>
+  sensitiveDemandTypeRows.value.find((item) => item.key === activeSensitiveDemandTypeKey.value) || null,
+)
+
+const sensitiveDemandPieCenterValue = computed(() =>
+  activeSensitiveDemandType.value?.count ?? sensitiveDemandTypeTotal.value,
+)
+
+const sensitiveDemandPieCenterLabel = computed(() =>
+  activeSensitiveDemandType.value
+    ? `${activeSensitiveDemandType.value.label} ${
+      sensitiveDemandTypeTotal.value
+        ? ((Math.max(safeNumber(activeSensitiveDemandType.value.count), 0) / sensitiveDemandTypeTotal.value) * 100).toFixed(1)
+        : '0.0'
+    }%`
+    : '诉求次数',
+)
+
+const sensitiveDemandUserTagCounts = computed(() => {
+  const sourceUsers = tagAndKeyUserSourceUsers.value
+  if (sourceUsers.length <= sensitiveDemandTopUsers.value.length) {
+    return sensitiveDemandFallbackUserTagCounts
+  }
+
+  const counts = {
+    important: 0,
+    sensitive: 0,
+    special: 0,
+  }
+  const seenUserKeys = new Set()
+
+  sourceUsers.forEach((item, index) => {
+    const userKey = String(readFieldValue(item, ['consNo', 'cons_no', 'userNo', 'userId', 'id']) || index).trim()
+    if (seenUserKeys.has(userKey)) {
+      return
+    }
+    seenUserKeys.add(userKey)
+
+    const classified = classifyUserByScore(item)
+    if (classified.isSensitive) {
+      counts.sensitive += 1
+    } else if (classified.isImportant) {
+      counts.important += 1
+    } else {
+      counts.special += 1
+    }
+  })
+
+  return counts
+})
+
+const sensitiveDemandUserTagTotal = computed(() => {
+  const counts = sensitiveDemandUserTagCounts.value
+  return sensitiveDemandUserTagMeta.reduce((sum, item) => sum + Math.max(safeNumber(counts[item.key]), 0), 0)
+})
+
+const sensitiveDemandUserTagRows = computed(() => {
+  const counts = sensitiveDemandUserTagCounts.value
+  return sensitiveDemandUserTagMeta.map((item) => {
+    const count = Math.max(safeNumber(counts[item.key]), 0)
+    return {
+      ...item,
+      count,
+      rate: sensitiveDemandUserTagTotal.value ? (count / sensitiveDemandUserTagTotal.value) * 100 : 0,
+    }
+  })
+})
+
+const sensitiveDemandUserTagPieBackground = computed(() =>
+  buildPieBackground(sensitiveDemandUserTagRows.value),
+)
+
+const activeSensitiveDemandUserTagKey = ref('')
+
+const sensitiveDemandUserTagPieSegments = computed(() => {
+  let cursor = 0
+  return sensitiveDemandUserTagRows.value
+    .map((item) => {
+      const value = Math.max(0, Number(item.rate) || 0)
+      const start = cursor
+      cursor = Math.min(100, cursor + value)
+      return {
+        ...item,
+        start,
+        value,
+      }
+    })
+    .filter((item) => item.value > 0)
+})
+
+const activeSensitiveDemandUserTag = computed(() =>
+  sensitiveDemandUserTagRows.value.find((item) => item.key === activeSensitiveDemandUserTagKey.value) || null,
+)
+
+const sensitiveDemandUserTagPieCenterValue = computed(() =>
+  activeSensitiveDemandUserTag.value?.count ?? sensitiveDemandUserTagTotal.value,
+)
+
+const sensitiveDemandUserTagPieCenterLabel = computed(() =>
+  activeSensitiveDemandUserTag.value
+    ? `${activeSensitiveDemandUserTag.value.label} ${
+      sensitiveDemandUserTagTotal.value
+        ? ((Math.max(safeNumber(activeSensitiveDemandUserTag.value.count), 0) / sensitiveDemandUserTagTotal.value) * 100).toFixed(1)
+        : '0.0'
+    }%`
+    : '诉求用户',
+)
+
+const distributeSensitiveDemandAutoDetailCounts = (total, categories = []) => {
+  const safeTotal = Math.max(safeNumber(total), 0)
+  const totalWeight = categories.reduce((sum, item) => sum + Math.max(safeNumber(item.weight), 0), 0)
+  if (!safeTotal || !totalWeight) {
+    return categories.map((item) => ({ ...item, count: 0, rate: 0 }))
+  }
+
+  let allocated = 0
+  return categories.map((item, index) => {
+    const count = index === categories.length - 1
+      ? Math.max(safeTotal - allocated, 0)
+      : Math.round((safeTotal * Math.max(safeNumber(item.weight), 0)) / totalWeight)
+    allocated += count
+    const rate = (count / safeTotal) * 100
+    return {
+      ...item,
+      count,
+      rate,
+      rateText: `${rate.toFixed(1)}%`,
+    }
+  })
+}
+
+const sensitiveDemandAutoDetailGroups = computed(() =>
+  sensitiveDemandAutoDetailMeta.map((group) => {
+    const total = Math.max(safeNumber(sensitiveDemandUserTagCounts.value[group.key]), 0)
+    const rows = distributeSensitiveDemandAutoDetailCounts(total, group.categories)
+    return {
+      ...group,
+      total,
+      rows,
+      pieBackground: buildPieBackground(rows),
+    }
+  }),
+)
+
+const selectedSensitiveDemandAutoDetailGroup = computed(() =>
+  sensitiveDemandAutoDetailGroups.value.find((item) => item.key === selectedSensitiveDemandAutoDetailKey.value) ||
+    sensitiveDemandAutoDetailGroups.value[0],
+)
+
+const activeSensitiveDemandAutoDetailCategoryKey = ref('')
+
+const sensitiveDemandAutoDetailPieSegments = computed(() => {
+  let cursor = 0
+  return (selectedSensitiveDemandAutoDetailGroup.value?.rows || [])
+    .map((item) => {
+      const value = Math.max(0, Number(item.rate) || 0)
+      const start = cursor
+      cursor = Math.min(100, cursor + value)
+      return {
+        ...item,
+        start,
+        value,
+      }
+    })
+    .filter((item) => item.value > 0)
+})
+
+const activeSensitiveDemandAutoDetailCategory = computed(() =>
+  selectedSensitiveDemandAutoDetailGroup.value?.rows.find(
+    (item) => item.key === activeSensitiveDemandAutoDetailCategoryKey.value,
+  ) || null,
+)
+
+const sensitiveDemandAutoDetailPieCenterValue = computed(() =>
+  activeSensitiveDemandAutoDetailCategory.value?.count ?? selectedSensitiveDemandAutoDetailGroup.value?.total ?? 0,
+)
+
+const sensitiveDemandAutoDetailPieCenterLabel = computed(() =>
+  activeSensitiveDemandAutoDetailCategory.value
+    ? `${activeSensitiveDemandAutoDetailCategory.value.label} ${activeSensitiveDemandAutoDetailCategory.value.rateText}`
+    : selectedSensitiveDemandAutoDetailGroup.value?.label ?? '',
+)
+
+const SENSITIVE_DEMAND_AUTO_DETAIL_PAGE_SIZE = 10
+const selectedSensitiveDemandAutoDetailTableCategoryKey = ref('important-1')
+const sensitiveDemandAutoDetailSearchInput = ref('')
+const sensitiveDemandAutoDetailSearchKeyword = ref('')
+const sensitiveDemandAutoDetailCurrentPage = ref(1)
+const sensitiveDemandAutoDetailJumpPageInput = ref('')
+const selectedSensitiveDemandAutoDetailTableUser = ref(null)
+
+const sensitiveDemandAutoDetailNamePool = [
+  '张文华',
+  '李建国',
+  '王丽娜',
+  '赵明远',
+  '刘晓梅',
+  '陈立新',
+  '周海燕',
+  '孙志强',
+  '杨静',
+  '马国庆',
+  '吴晓东',
+  '郑丽华',
+  '胡建平',
+  '高雪梅',
+  '林志远',
+  '何春燕',
+  '郭明辉',
+  '梁佳宁',
+  '宋国强',
+  '唐晓彤',
+  '许立军',
+  '邓雅楠',
+  '冯海涛',
+  '曾庆华',
+  '袁静怡',
+  '董志鹏',
+  '薛丽君',
+  '潘明哲',
+  '邱晓峰',
+  '韩雨晴',
+  '曹建伟',
+  '崔玉兰',
+  '陆思远',
+  '汪海英',
+  '石磊',
+  '田佳琪',
+  '姜文博',
+  '范晓红',
+  '姚志敏',
+  '贾丽娜',
+  '孟祥宇',
+  '秦晓蕾',
+  '白建民',
+  '谭欣怡',
+  '侯志刚',
+  '段丽萍',
+  '尹浩然',
+  '常瑞雪',
+  '毛俊杰',
+  '龙佳慧',
+]
+
+const sensitiveDemandAutoDetailGroupNamePools = {
+  important: sensitiveDemandAutoDetailNamePool,
+  sensitive: [
+    '罗敏',
+    '魏佳怡',
+    '程建华',
+    '叶晓晨',
+    '丁海峰',
+    '任雪',
+    '钟明远',
+    '卢婷婷',
+    '孔祥林',
+    '苏雅楠',
+    '余志诚',
+    '梅丽君',
+    '乔思琪',
+    '夏文斌',
+    '郝晓琳',
+    '严俊杰',
+    '黎雨桐',
+    '龚海涛',
+    '安晓月',
+    '穆建国',
+    '邵丽娜',
+    '申志强',
+    '康晓峰',
+    '武欣然',
+    '葛明辉',
+    '盛佳宁',
+    '樊立新',
+    '蓝雪梅',
+    '温子涵',
+    '詹志鹏',
+    '季晓蕾',
+    '路海英',
+    '辛国庆',
+    '凌雨晴',
+    '祝文博',
+    '左丽萍',
+    '苗俊杰',
+    '包雅雯',
+    '费建民',
+    '宁浩然',
+  ],
+  special: [
+    '金志远',
+    '陶晓辉',
+    '方丽媛',
+    '沈国梁',
+    '易佳慧',
+    '顾海滨',
+    '贺晓宇',
+    '廖静怡',
+    '邢文强',
+    '毕雪晴',
+    '祁建军',
+    '项丽华',
+    '裴明哲',
+    '柴晓东',
+    '焦雨欣',
+    '管志民',
+    '舒海燕',
+    '翁佳琪',
+    '牟立峰',
+    '艾晓红',
+    '芦志刚',
+    '柯雅静',
+    '屈建平',
+    '房丽君',
+    '解明亮',
+    '鲍欣怡',
+    '蓝国强',
+    '殷雪梅',
+    '齐浩宇',
+    '成晓彤',
+    '廉文静',
+    '卓海涛',
+    '冉丽娜',
+    '纪志鹏',
+    '华晓楠',
+    '符建伟',
+    '向春燕',
+    '詹明辉',
+    '欧阳静',
+    '司马俊峰',
+  ],
+}
+
+const sensitiveDemandAutoDetailDemandTemplates = [
+  '反映近期停电后复电进度需要持续告知。',
+  '咨询停电原因及后续供电保障安排。',
+  '反馈停电期间应急联络信息需要更新。',
+  '要求核实同区域重复停电影响情况。',
+  '希望提供最近一次诉求处理结果回访。',
+]
+
+const selectedSensitiveDemandAutoDetailTableCategory = computed(() =>
+  selectedSensitiveDemandAutoDetailGroup.value?.rows.find(
+    (item) => item.key === selectedSensitiveDemandAutoDetailTableCategoryKey.value,
+  ) || selectedSensitiveDemandAutoDetailGroup.value?.rows[0] || null,
+)
+
+const buildSensitiveDemandAutoDetailTableRows = (group, category) => {
+  const count = Math.max(safeNumber(category?.count), 0)
+  if (!group || !category || count <= 0) {
+    return []
+  }
+
+  const groupNoMap = {
+    important: 'ZD',
+    sensitive: 'MG',
+    special: 'TS',
+  }
+  const groupNo = groupNoMap[group.key] || 'KH'
+  const categoryIndex = Math.max(
+    (group.rows || group.categories || []).findIndex((item) => item.key === category.key),
+    0,
+  )
+  const nameOffset = categoryIndex * SENSITIVE_DEMAND_AUTO_DETAIL_PAGE_SIZE
+  const namePool = sensitiveDemandAutoDetailGroupNamePools[group.key] || sensitiveDemandAutoDetailNamePool
+  const groupPhoneOffsetMap = {
+    important: 0,
+    sensitive: 20000,
+    special: 40000,
+  }
+  const groupPhoneOffset = groupPhoneOffsetMap[group.key] || 0
+  return Array.from({ length: count }, (_, index) => {
+    const seq = index + 1
+    const demandCount = (index % 3) + 1
+    return {
+      key: `${category.key}-${seq}`,
+      consNo: `TS${groupNo}${String(categoryIndex + 1).padStart(2, '0')}${String(seq).padStart(4, '0')}`,
+      consName: namePool[(index + nameOffset) % namePool.length],
+      phone: `138${String(31500000 + groupPhoneOffset + nameOffset + index).padStart(8, '0')}`,
+      userType: category.label,
+      demandContents: Array.from({ length: demandCount }, (_, demandIndex) => ({
+        time: `2026-05-${String(24 - demandIndex).padStart(2, '0')} ${String(9 + ((index + demandIndex) % 8)).padStart(2, '0')}:30`,
+        content: sensitiveDemandAutoDetailDemandTemplates[
+          (index + demandIndex) % sensitiveDemandAutoDetailDemandTemplates.length
+        ],
+      })),
+    }
+  })
+}
+
+const sensitiveDemandAutoDetailTableRows = computed(() =>
+  buildSensitiveDemandAutoDetailTableRows(
+    selectedSensitiveDemandAutoDetailGroup.value,
+    selectedSensitiveDemandAutoDetailTableCategory.value,
+  ),
+)
+
+const filteredSensitiveDemandAutoDetailTableRows = computed(() => {
+  const keyword = sensitiveDemandAutoDetailSearchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return sensitiveDemandAutoDetailTableRows.value
+  }
+
+  return sensitiveDemandAutoDetailTableRows.value.filter((item) =>
+    item.consNo.toLowerCase().includes(keyword) ||
+      item.consName.toLowerCase().includes(keyword),
+  )
+})
+
+const sensitiveDemandAutoDetailTotalPages = computed(() =>
+  Math.max(Math.ceil(filteredSensitiveDemandAutoDetailTableRows.value.length / SENSITIVE_DEMAND_AUTO_DETAIL_PAGE_SIZE), 1),
+)
+
+const sensitiveDemandAutoDetailPageRows = computed(() => {
+  const start = (sensitiveDemandAutoDetailCurrentPage.value - 1) * SENSITIVE_DEMAND_AUTO_DETAIL_PAGE_SIZE
+  return filteredSensitiveDemandAutoDetailTableRows.value.slice(
+    start,
+    start + SENSITIVE_DEMAND_AUTO_DETAIL_PAGE_SIZE,
+  )
+})
+
+const sensitiveDemandAutoDetailPageButtons = computed(() => {
+  const total = sensitiveDemandAutoDetailTotalPages.value
+  const maxButtons = 5
+  if (total <= maxButtons) {
+    return Array.from({ length: total }, (_, index) => index + 1)
+  }
+
+  const half = Math.floor(maxButtons / 2)
+  let start = sensitiveDemandAutoDetailCurrentPage.value - half
+  let end = sensitiveDemandAutoDetailCurrentPage.value + half
+  if (start < 1) {
+    start = 1
+    end = maxButtons
+  }
+  if (end > total) {
+    end = total
+    start = total - maxButtons + 1
+  }
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index)
+})
+
+const applySensitiveDemandAutoDetailSearch = () => {
+  sensitiveDemandAutoDetailSearchKeyword.value = sensitiveDemandAutoDetailSearchInput.value.trim()
+  sensitiveDemandAutoDetailCurrentPage.value = 1
+  sensitiveDemandAutoDetailJumpPageInput.value = ''
+}
+
+const goSensitiveDemandAutoDetailPage = (page) => {
+  const target = Math.max(1, Math.min(sensitiveDemandAutoDetailTotalPages.value, Math.round(Number(page) || 1)))
+  sensitiveDemandAutoDetailCurrentPage.value = target
+}
+
+const jumpToSensitiveDemandAutoDetailPage = () => {
+  const input = String(sensitiveDemandAutoDetailJumpPageInput.value ?? '').trim()
+  if (!input) {
+    return
+  }
+  const parsed = Number(input)
+  if (!Number.isFinite(parsed)) {
+    return
+  }
+  goSensitiveDemandAutoDetailPage(parsed)
+  sensitiveDemandAutoDetailJumpPageInput.value = String(sensitiveDemandAutoDetailCurrentPage.value)
+}
+
+watch(selectedSensitiveDemandAutoDetailKey, () => {
+  activeSensitiveDemandAutoDetailCategoryKey.value = ''
+  selectedSensitiveDemandAutoDetailTableCategoryKey.value = selectedSensitiveDemandAutoDetailGroup.value?.rows[0]?.key || ''
+  sensitiveDemandAutoDetailSearchInput.value = ''
+  sensitiveDemandAutoDetailSearchKeyword.value = ''
+  sensitiveDemandAutoDetailCurrentPage.value = 1
+  sensitiveDemandAutoDetailJumpPageInput.value = ''
+  selectedSensitiveDemandAutoDetailTableUser.value = null
+})
+
+watch(selectedSensitiveDemandAutoDetailTableCategoryKey, () => {
+  sensitiveDemandAutoDetailCurrentPage.value = 1
+  sensitiveDemandAutoDetailJumpPageInput.value = ''
+  selectedSensitiveDemandAutoDetailTableUser.value = null
 })
 
 const outageRangeChains = computed(() => {
@@ -5094,6 +5719,9 @@ const toggleRightPanel = () => {
 
 const switchPageTab = (tab) => {
   activePageTab.value = tab === 'sensitiveDemand' ? 'sensitiveDemand' : 'outageUsers'
+  if (activePageTab.value !== 'sensitiveDemand') {
+    showSensitiveDemandAutoDetail.value = false
+  }
   if (activePageTab.value !== 'outageUsers') {
     spaceDistributionDetailVisible.value = false
     countyEquipmentListRows.value = []
@@ -5610,7 +6238,7 @@ onBeforeUnmount(() => {
                 :time-sub-segments="keyUserTimeTrend.timeLabels"
                 :sensitive-series="keyUserTimeTrend.sensitiveSeries"
                 :important-series="keyUserTimeTrend.importantSeries"
-                :loading="loading || countyTrendLoading"
+                :loading="countyTrendLoading"
                 :outage-freq-loading="countyOutageFreqLoading"
                 @open-detail-page="handleOpenTimeTrendDetailPage"
               />
@@ -5630,6 +6258,321 @@ onBeforeUnmount(() => {
                 @close-detail-page="handleCloseSpaceDistributionDetailPage"
                 @select-top-device="handleSelectSpaceDistributionTopDevice"
               />
+            </template>
+
+            <template v-else-if="activePageTab === 'sensitiveDemand'">
+              <section v-if="showSensitiveDemandAutoDetail" class="sensitive-demand-auto-detail-page">
+                <header class="sensitive-demand-auto-detail-head">
+                  <h2>自动化识别</h2>
+                  <div class="sensitive-demand-auto-detail-actions">
+                    <button type="button" class="user-detail-close" @click="showSensitiveDemandAutoDetail = false">×</button>
+                  </div>
+                </header>
+                <div class="sensitive-demand-auto-detail-content">
+                  <section class="sensitive-demand-auto-detail-half sensitive-demand-auto-detail-pies">
+                    <div class="sensitive-demand-auto-detail-module-actions">
+                      <select v-model="selectedSensitiveDemandAutoDetailKey" class="region-select">
+                        <option
+                          v-for="group in sensitiveDemandAutoDetailGroups"
+                          :key="`auto-detail-option-${group.key}`"
+                          :value="group.key"
+                        >
+                          {{ group.label }}
+                        </option>
+                      </select>
+                    </div>
+                    <article class="sensitive-demand-auto-detail-pie-card">
+                      <div
+                        class="tag-pie sensitive-demand-pie sensitive-demand-detail-pie"
+                        :style="{ '--demand-pie-bg': selectedSensitiveDemandAutoDetailGroup.pieBackground }"
+                        @mouseleave="activeSensitiveDemandAutoDetailCategoryKey = ''"
+                      >
+                        <svg class="sensitive-demand-pie-hit-area" viewBox="0 0 100 100" aria-hidden="true">
+                          <circle
+                            v-for="item in sensitiveDemandAutoDetailPieSegments"
+                            :key="`sensitive-demand-auto-detail-pie-${item.key}`"
+                            class="sensitive-demand-pie-hit-segment"
+                            cx="50"
+                            cy="50"
+                            r="39.5"
+                            pathLength="100"
+                            :stroke-dasharray="`${item.value} ${100 - item.value}`"
+                            :stroke-dashoffset="-item.start"
+                            @mouseenter="activeSensitiveDemandAutoDetailCategoryKey = item.key"
+                            @focus="activeSensitiveDemandAutoDetailCategoryKey = item.key"
+                          />
+                        </svg>
+                        <div class="tag-pie-center sensitive-demand-auto-pie-center">
+                          <strong>{{ sensitiveDemandAutoDetailPieCenterValue }}</strong>
+                          <span>{{ sensitiveDemandAutoDetailPieCenterLabel }}</span>
+                        </div>
+                      </div>
+                    </article>
+                    <article class="sensitive-demand-auto-detail-list-card">
+                      <div class="sensitive-demand-auto-detail-list">
+                        <div
+                          v-for="item in selectedSensitiveDemandAutoDetailGroup.rows"
+                          :key="item.key"
+                          class="sensitive-demand-auto-detail-row"
+                        >
+                          <span class="sensitive-demand-type-dot" :style="{ background: item.color }"></span>
+                          <span class="sensitive-demand-type-label" :title="item.label">{{ item.label }}</span>
+                          <strong>{{ item.count }}人</strong>
+                          <em>{{ item.rateText }}</em>
+                        </div>
+                      </div>
+                    </article>
+                  </section>
+                  <section class="sensitive-demand-auto-detail-half sensitive-demand-auto-detail-spare">
+                    <div class="sensitive-demand-auto-detail-query">
+                      <input
+                        v-model="sensitiveDemandAutoDetailSearchInput"
+                        class="sensitive-demand-auto-detail-search"
+                        type="text"
+                        placeholder="搜索客户编号或客户姓名"
+                        @keydown.enter.prevent="applySensitiveDemandAutoDetailSearch"
+                      />
+                      <button
+                        type="button"
+                        class="sensitive-demand-auto-detail-query-btn"
+                        @click="applySensitiveDemandAutoDetailSearch"
+                      >
+                        查询
+                      </button>
+                      <select v-model="selectedSensitiveDemandAutoDetailTableCategoryKey" class="region-select">
+                        <option
+                          v-for="item in selectedSensitiveDemandAutoDetailGroup.rows"
+                          :key="`auto-detail-table-category-${item.key}`"
+                          :value="item.key"
+                        >
+                          {{ item.label }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="sensitive-demand-auto-detail-table-wrap">
+                      <div class="sensitive-demand-auto-detail-table sensitive-demand-auto-detail-table-head">
+                        <span>用户编号</span>
+                        <span>姓名</span>
+                        <span>电话</span>
+                        <span>用户类型</span>
+                        <span>详情</span>
+                      </div>
+                      <div class="sensitive-demand-auto-detail-table-body">
+                        <div
+                          v-for="item in sensitiveDemandAutoDetailPageRows"
+                          :key="item.key"
+                          class="sensitive-demand-auto-detail-table sensitive-demand-auto-detail-table-row"
+                        >
+                          <span :title="item.consNo">{{ item.consNo }}</span>
+                          <span :title="item.consName">{{ item.consName }}</span>
+                          <span :title="item.phone">{{ item.phone }}</span>
+                          <span :title="item.userType">{{ item.userType }}</span>
+                          <button
+                            type="button"
+                            class="detail-btn"
+                            @click="selectedSensitiveDemandAutoDetailTableUser = item"
+                          >
+                            详情
+                          </button>
+                        </div>
+                        <p
+                          v-if="sensitiveDemandAutoDetailPageRows.length === 0"
+                          class="empty-tip sensitive-demand-auto-detail-empty"
+                        >
+                          暂无客户诉求数据
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="sensitive-demand-auto-detail-pagination">
+                      <span>共 {{ filteredSensitiveDemandAutoDetailTableRows.length }} 条</span>
+                      <button
+                        v-for="page in sensitiveDemandAutoDetailPageButtons"
+                        :key="`sensitive-demand-auto-detail-page-${page}`"
+                        type="button"
+                        class="page-btn"
+                        :class="{ active: page === sensitiveDemandAutoDetailCurrentPage }"
+                        @click="goSensitiveDemandAutoDetailPage(page)"
+                      >
+                        {{ page }}
+                      </button>
+                      <div class="user-detail-page-jump">
+                        <input
+                          v-model="sensitiveDemandAutoDetailJumpPageInput"
+                          type="number"
+                          min="1"
+                          :max="sensitiveDemandAutoDetailTotalPages"
+                          class="user-detail-page-input"
+                          placeholder="页码"
+                          @keyup.enter="jumpToSensitiveDemandAutoDetailPage"
+                        />
+                        <button
+                          type="button"
+                          class="user-detail-page-jump-btn"
+                          @click="jumpToSensitiveDemandAutoDetailPage"
+                        >
+                          跳转
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <div
+                  v-if="selectedSensitiveDemandAutoDetailTableUser"
+                  class="user-detail-modal-mask sensitive-demand-auto-detail-modal-mask"
+                  @click.self="selectedSensitiveDemandAutoDetailTableUser = null"
+                >
+                  <article class="user-detail-modal sensitive-demand-auto-detail-modal">
+                    <button
+                      type="button"
+                      class="user-detail-modal-close"
+                      @click="selectedSensitiveDemandAutoDetailTableUser = null"
+                    >
+                      ×
+                    </button>
+                    <h4>客户诉求详情</h4>
+                    <div class="user-detail-modal-content sensitive-demand-auto-detail-modal-content">
+                      <p><span>用户编号：</span>{{ selectedSensitiveDemandAutoDetailTableUser.consNo }}</p>
+                      <p><span>姓名：</span>{{ selectedSensitiveDemandAutoDetailTableUser.consName }}</p>
+                      <p><span>电话：</span>{{ selectedSensitiveDemandAutoDetailTableUser.phone }}</p>
+                      <p><span>用户类型：</span>{{ selectedSensitiveDemandAutoDetailTableUser.userType }}</p>
+                      <div class="sensitive-demand-auto-detail-demands">
+                        <h5>诉求内容</h5>
+                        <ul>
+                          <li
+                            v-for="item in selectedSensitiveDemandAutoDetailTableUser.demandContents"
+                            :key="`${selectedSensitiveDemandAutoDetailTableUser.key}-${item.time}`"
+                          >
+                            <strong>{{ item.time }}</strong>
+                            <span>{{ item.content }}</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <div v-else class="sensitive-demand-left-layout">
+                <section class="sensitive-demand-module sensitive-demand-top-module">
+                  <div class="module-title-row">
+                    <h2>诉求归集TOP 5</h2>
+                  </div>
+
+                  <div class="sensitive-demand-top-content">
+                    <div class="sensitive-demand-user-list">
+                      <div
+                        v-for="item in sensitiveDemandTopUsers"
+                        :key="item.key"
+                        class="sensitive-demand-user-item"
+                        :class="{ active: item.key === selectedSensitiveDemandUserKey }"
+                        @click="selectedSensitiveDemandUserKey = item.key"
+                      >
+                        <div class="sensitive-demand-user-info">
+                          <p :title="item.consNo">用户编号：{{ item.consNo }}</p>
+                          <p :title="item.consName">用户姓名：{{ item.consName }}</p>
+                          <p :title="item.phone">用户电话：{{ item.phone }}</p>
+                        </div>
+                        <div class="sensitive-demand-user-count">
+                          <strong>{{ item.count }}</strong>
+                          <span>次</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="sensitive-demand-type-panel">
+                      <div class="sensitive-demand-type-head">
+                        <h3>诉求类型</h3>
+                      </div>
+                      <div
+                        class="tag-pie sensitive-demand-pie"
+                        :style="{ '--demand-pie-bg': sensitiveDemandPieBackground }"
+                        @mouseleave="activeSensitiveDemandTypeKey = ''"
+                      >
+                        <svg class="sensitive-demand-pie-hit-area" viewBox="0 0 100 100" aria-hidden="true">
+                          <circle
+                            v-for="item in sensitiveDemandPieSegments"
+                            :key="`sensitive-demand-pie-${item.key}`"
+                            class="sensitive-demand-pie-hit-segment"
+                            cx="50"
+                            cy="50"
+                            r="39.5"
+                            pathLength="100"
+                            :stroke-dasharray="`${item.value} ${100 - item.value}`"
+                            :stroke-dashoffset="-item.start"
+                            @mouseenter="activeSensitiveDemandTypeKey = item.key"
+                            @focus="activeSensitiveDemandTypeKey = item.key"
+                          />
+                        </svg>
+                        <div class="tag-pie-center sensitive-demand-pie-center">
+                          <strong>{{ sensitiveDemandPieCenterValue }}</strong>
+                          <span>{{ sensitiveDemandPieCenterLabel }}</span>
+                        </div>
+                      </div>
+                      <div class="sensitive-demand-type-legend">
+                        <div
+                          v-for="item in sensitiveDemandTypeRows"
+                          :key="item.key"
+                          class="sensitive-demand-type-legend-item"
+                        >
+                          <span class="sensitive-demand-type-dot" :style="{ background: item.color }"></span>
+                          <span class="sensitive-demand-type-label" :title="item.label">{{ item.label }}</span>
+                          <strong>{{ item.count }}次</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section
+                  class="sensitive-demand-module sensitive-demand-auto-module"
+                  @click="showSensitiveDemandAutoDetail = true"
+                >
+                  <div class="module-title-row">
+                    <h2>自动化识别</h2>
+                  </div>
+                  <div class="sensitive-demand-type-panel sensitive-demand-auto-panel">
+                    <div
+                      class="tag-pie sensitive-demand-pie sensitive-demand-auto-pie"
+                      :style="{ '--demand-pie-bg': sensitiveDemandUserTagPieBackground }"
+                      @mouseleave="activeSensitiveDemandUserTagKey = ''"
+                    >
+                      <svg class="sensitive-demand-pie-hit-area" viewBox="0 0 100 100" aria-hidden="true">
+                        <circle
+                          v-for="item in sensitiveDemandUserTagPieSegments"
+                          :key="`sensitive-demand-user-tag-pie-${item.key}`"
+                          class="sensitive-demand-pie-hit-segment"
+                          cx="50"
+                          cy="50"
+                          r="39.5"
+                          pathLength="100"
+                          :stroke-dasharray="`${item.value} ${100 - item.value}`"
+                          :stroke-dashoffset="-item.start"
+                          @mouseenter="activeSensitiveDemandUserTagKey = item.key"
+                          @focus="activeSensitiveDemandUserTagKey = item.key"
+                        />
+                      </svg>
+                      <div class="tag-pie-center sensitive-demand-auto-pie-center">
+                        <strong>{{ sensitiveDemandUserTagPieCenterValue }}</strong>
+                        <span>{{ sensitiveDemandUserTagPieCenterLabel }}</span>
+                      </div>
+                    </div>
+                    <div class="sensitive-demand-type-legend sensitive-demand-auto-legend">
+                      <div
+                        v-for="item in sensitiveDemandUserTagRows"
+                        :key="item.key"
+                        class="sensitive-demand-type-legend-item sensitive-demand-auto-legend-item"
+                      >
+                        <span class="sensitive-demand-type-dot" :style="{ background: item.color }"></span>
+                        <span class="sensitive-demand-type-label" :title="item.label">{{ item.label }}</span>
+                        <strong>{{ item.count }}人</strong>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
             </template>
           </section>
         </div>
@@ -5660,7 +6603,7 @@ onBeforeUnmount(() => {
                 :county-region-options="countyRegionOptions"
                 :fault-location-summary="faultLocationSummary"
                 :filtered-fault-outage-events-length="filteredFaultOutageEvents.length"
-                :fault-location-loading="loading || faultLocationLoading"
+                :fault-location-loading="faultLocationLoading"
                 :show-outage-detail-page="showOutageDetailPage"
                 :outage-nature-overview="outageNatureOverview"
                 :outage-events-summary-loading="outageEventsSummaryLoading"
@@ -5696,7 +6639,7 @@ onBeforeUnmount(() => {
 
               <OutageRangeAssessmentCard
                 :outage-summary="outageSummary"
-                :outage-summary-loading="loading || outageScopeSummaryLoading"
+                :outage-summary-loading="outageScopeSummaryLoading"
                 :outage-range-chains="outageRangeChains"
                 :outage-range-total="outageRangeChainsTotal"
                 :outage-range-current-page="outageRangeChainsCurrentPage"
