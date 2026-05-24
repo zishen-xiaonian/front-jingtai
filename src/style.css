@@ -1927,11 +1927,12 @@
 /* Sensitive demand analysis panel */
 .sensitive-demand-module {
   display: grid;
-  grid-template-rows: auto 1fr 1.08fr 1fr .92fr;
+  grid-template-rows: auto minmax(142px, .95fr) minmax(152px, 1.08fr) minmax(148px, 1fr) minmax(126px, .92fr);
   gap: 8px;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sensitive-demand-module .module-block {
@@ -1961,7 +1962,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 5px;
 }
 
