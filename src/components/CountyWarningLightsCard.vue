@@ -133,7 +133,7 @@ watch(popupTotalPages, (total) => {
     </ul>
 
     <teleport to="body">
-      <div v-if="props.popupVisible" class="county-warning-popup-mask" @click.self="emit('close-popup')">
+      <div v-if="props.popupVisible" class="county-warning-popup-mask">
         <div class="county-warning-popup-card">
           <div class="county-warning-popup-head">
             <h4>{{ props.popupCountyName || '供电单位' }}</h4>

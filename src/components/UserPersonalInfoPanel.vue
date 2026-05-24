@@ -21,6 +21,10 @@ import '../style.css'
         <span class="user-personal-info-label">联系电话</span>
         <span class="user-personal-info-value"></span>
       </div>
+      <div class="user-personal-info-row">
+        <span class="user-personal-info-label">用户地址</span>
+        <span class="user-personal-info-value"></span>
+      </div>
     </div>
   </section>
 </template>
