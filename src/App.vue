@@ -26,6 +26,11 @@ import KeyUserCountBarCard from './components/KeyUserCountBarCard.vue'
 import FaultLocationModuleCard from './components/FaultLocationModuleCard.vue'
 import OutageRangeAssessmentCard from './components/OutageRangeAssessmentCard.vue'
 import CountyWarningLightsCard from './components/CountyWarningLightsCard.vue'
+import SearchBox from './components/SearchBox.vue'
+import UserPersonalInfoPanel from './components/UserPersonalInfoPanel.vue'
+import EmotionEvolutionAnalysisPanel from './components/EmotionEvolutionAnalysisPanel.vue'
+import IntelligentWarningPanel from './components/IntelligentWarningPanel.vue'
+import ReplyAssistantPanel from './components/ReplyAssistantPanel.vue'
 
 const tangshanCenter = [118.180194, 39.630867]
 
@@ -80,6 +85,7 @@ let infoWindow = null
 const isLeftCollapsed = ref(false)
 const isRightCollapsed = ref(false)
 const activePageTab = ref('outageUsers')
+const intelligentAnalysisSearchInput = ref('')
 const loading = ref(false)
 const dataError = ref('')
 const dataNotice = ref('')
@@ -5641,73 +5647,83 @@ onBeforeUnmount(() => {
         </button>
 
         <div v-show="!isRightCollapsed" class="panel-inner">
-          <section class="card module-card">
-            <template v-if="activePageTab === 'outageUsers'">
-              <CountyWarningLightsCard
-                :county-warning-lights="countyWarningLights"
-                :loading="loading"
-                :popup-visible="countyWarningPopupVisible"
-                :popup-county-name="countyWarningPopupCounty"
-                :popup-events="countyWarningPopupEvents"
-                :popup-loading="countyWarningPopupLoading"
-                :popup-error="countyWarningPopupError"
-                @select-county="openCountyWarningPopup"
-                @close-popup="closeCountyWarningPopup"
-              />
+          <section v-if="activePageTab === 'outageUsers'" class="card module-card">
+            <CountyWarningLightsCard
+              :county-warning-lights="countyWarningLights"
+              :loading="loading"
+              :popup-visible="countyWarningPopupVisible"
+              :popup-county-name="countyWarningPopupCounty"
+              :popup-events="countyWarningPopupEvents"
+              :popup-loading="countyWarningPopupLoading"
+              :popup-error="countyWarningPopupError"
+              @select-county="openCountyWarningPopup"
+              @close-popup="closeCountyWarningPopup"
+            />
 
-              <FaultLocationModuleCard
-                :selected-fault-county="selectedRegion"
-                :county-region-options="countyRegionOptions"
-                :fault-location-summary="faultLocationSummary"
-                :filtered-fault-outage-events-length="filteredFaultOutageEvents.length"
-                :fault-location-loading="loading || faultLocationLoading"
-                :show-outage-detail-page="showOutageDetailPage"
-                :outage-nature-overview="outageNatureOverview"
-                :outage-events-summary-loading="outageEventsSummaryLoading"
-                :outage-restore-overview="outageRestoreOverview"
-                :outage-detail-search-input="outageDetailSearchInput"
-                :outage-detail-selected-nature="outageDetailSelectedNature"
-                :paged-outage-detail-rows="pagedOutageDetailRows"
-                :filtered-outage-detail-rows-length="outageDetailTotal"
-                :outage-detail-page-buttons="outageDetailPageButtons"
-                :outage-detail-current-page="outageDetailCurrentPage"
-                :outage-detail-jump-page-input="outageDetailJumpPageInput"
-                :outage-detail-total-pages="outageDetailTotalPages"
-                :outage-detail-loading="outageDetailLoading"
-                :outage-detail-modal-visible="outageDetailModalVisible"
-                :outage-detail-dimension="outageDetailDimension"
-                :selected-outage-detail="selectedOutageDetail"
-                :outage-detail-grid-body-ref-setter="setOutageDetailGridBodyRef"
-                :outage-detail-pagination-ref-setter="setOutageDetailPaginationRef"
-                :outage-detail-page-jump-ref-setter="setOutageDetailPageJumpRef"
-                @update:selected-fault-county="selectedRegion = $event"
-                @open-outage-detail="openOutageDetailPage"
-                @fault-mode-change="handleFaultLocationModeChange"
-                @close-outage-detail="closeOutageDetailPage"
-                @update:outage-detail-search-input="outageDetailSearchInput = $event"
-                @apply-outage-detail-search="applyOutageDetailSearch"
-                @update:outage-detail-selected-nature="outageDetailSelectedNature = $event"
-                @open-outage-detail-modal="openOutageDetailModal"
-                @go-outage-detail-page="goOutageDetailPage"
-                @update:outage-detail-jump-page-input="outageDetailJumpPageInput = $event"
-                @jump-to-outage-detail-page="jumpToOutageDetailPage"
-                @close-outage-detail-modal="closeOutageDetailModal"
-              />
+            <FaultLocationModuleCard
+              :selected-fault-county="selectedRegion"
+              :county-region-options="countyRegionOptions"
+              :fault-location-summary="faultLocationSummary"
+              :filtered-fault-outage-events-length="filteredFaultOutageEvents.length"
+              :fault-location-loading="loading || faultLocationLoading"
+              :show-outage-detail-page="showOutageDetailPage"
+              :outage-nature-overview="outageNatureOverview"
+              :outage-events-summary-loading="outageEventsSummaryLoading"
+              :outage-restore-overview="outageRestoreOverview"
+              :outage-detail-search-input="outageDetailSearchInput"
+              :outage-detail-selected-nature="outageDetailSelectedNature"
+              :paged-outage-detail-rows="pagedOutageDetailRows"
+              :filtered-outage-detail-rows-length="outageDetailTotal"
+              :outage-detail-page-buttons="outageDetailPageButtons"
+              :outage-detail-current-page="outageDetailCurrentPage"
+              :outage-detail-jump-page-input="outageDetailJumpPageInput"
+              :outage-detail-total-pages="outageDetailTotalPages"
+              :outage-detail-loading="outageDetailLoading"
+              :outage-detail-modal-visible="outageDetailModalVisible"
+              :outage-detail-dimension="outageDetailDimension"
+              :selected-outage-detail="selectedOutageDetail"
+              :outage-detail-grid-body-ref-setter="setOutageDetailGridBodyRef"
+              :outage-detail-pagination-ref-setter="setOutageDetailPaginationRef"
+              :outage-detail-page-jump-ref-setter="setOutageDetailPageJumpRef"
+              @update:selected-fault-county="selectedRegion = $event"
+              @open-outage-detail="openOutageDetailPage"
+              @fault-mode-change="handleFaultLocationModeChange"
+              @close-outage-detail="closeOutageDetailPage"
+              @update:outage-detail-search-input="outageDetailSearchInput = $event"
+              @apply-outage-detail-search="applyOutageDetailSearch"
+              @update:outage-detail-selected-nature="outageDetailSelectedNature = $event"
+              @open-outage-detail-modal="openOutageDetailModal"
+              @go-outage-detail-page="goOutageDetailPage"
+              @update:outage-detail-jump-page-input="outageDetailJumpPageInput = $event"
+              @jump-to-outage-detail-page="jumpToOutageDetailPage"
+              @close-outage-detail-modal="closeOutageDetailModal"
+            />
 
-              <OutageRangeAssessmentCard
-                :outage-summary="outageSummary"
-                :outage-summary-loading="loading || outageScopeSummaryLoading"
-                :outage-range-chains="outageRangeChains"
-                :outage-range-total="outageRangeChainsTotal"
-                :outage-range-current-page="outageRangeChainsCurrentPage"
-                :outage-range-loading="outageRangeChainsLoading"
-                :show-outage-range-assessment-page="showOutageRangeAssessmentPage"
-                @open-outage-range-detail="openOutageRangeAssessmentPage"
-                @go-outage-range-page="goOutageRangeAssessmentPage"
-                @close-outage-range-detail="closeOutageRangeAssessmentPage"
-                @open-outage-range-chain-detail="locateOutageRangeChainOnMapFrame"
-              />
-            </template>
+            <OutageRangeAssessmentCard
+              :outage-summary="outageSummary"
+              :outage-summary-loading="loading || outageScopeSummaryLoading"
+              :outage-range-chains="outageRangeChains"
+              :outage-range-total="outageRangeChainsTotal"
+              :outage-range-current-page="outageRangeChainsCurrentPage"
+              :outage-range-loading="outageRangeChainsLoading"
+              :show-outage-range-assessment-page="showOutageRangeAssessmentPage"
+              @open-outage-range-detail="openOutageRangeAssessmentPage"
+              @go-outage-range-page="goOutageRangeAssessmentPage"
+              @close-outage-range-detail="closeOutageRangeAssessmentPage"
+              @open-outage-range-chain-detail="locateOutageRangeChainOnMapFrame"
+            />
+          </section>
+
+          <section v-else class="card module-card sensitive-demand-module">
+            <SearchBox
+              :model-value="intelligentAnalysisSearchInput"
+              @update:model-value="intelligentAnalysisSearchInput = $event"
+            />
+
+            <UserPersonalInfoPanel />
+            <EmotionEvolutionAnalysisPanel />
+            <IntelligentWarningPanel />
+            <ReplyAssistantPanel />
           </section>
         </div>
       </aside>
