@@ -111,6 +111,9 @@ const countyWarningPopupCounty = ref('')
 const countyWarningPopupEvents = ref([])
 const countyWarningPopupLoading = ref(false)
 const countyWarningPopupError = ref('')
+const countyWarningPopupSelectedItem = ref(null)
+const countyWarningPopupCurrentPage = ref(1)
+const countyWarningPopupTotal = ref(0)
 const countyTrendData = ref({
   labels: [],
   sensitiveSeries: [],
@@ -874,7 +877,7 @@ const OUTAGE_DETAIL_DEFAULT_PAGE = 1
 const OUTAGE_DETAIL_DEFAULT_PER_PAGE = 10
 const OUTAGE_DETAIL_REMOTE_MAX_PER_PAGE = 500
 const OUTAGE_CHAINS_REMOTE_PAGE_SIZE = 4
-const COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE = 500
+const COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE = 3
 
 const chunkArray = (list, size) => {
   if (!Array.isArray(list) || list.length === 0 || size <= 0) {
@@ -1872,22 +1875,76 @@ const closeCountyWarningPopup = () => {
   countyWarningPopupEvents.value = []
   countyWarningPopupLoading.value = false
   countyWarningPopupError.value = ''
+  countyWarningPopupSelectedItem.value = null
+  countyWarningPopupCurrentPage.value = 1
+  countyWarningPopupTotal.value = 0
   countyWarningPopupRequestId += 1
 }
 
-const openCountyWarningPopup = async (item) => {
+const loadCountyWarningPopupPage = async ({ selectedItem, beginTime, endTime, page = 1 }) => {
+  const requestId = ++countyWarningPopupRequestId
+  const targetPage = Math.max(1, Math.round(safeNumber(page) || 1))
+
+  countyWarningPopupLoading.value = true
+  countyWarningPopupError.value = ''
+
+  try {
+    const payload = buildCountyWarningPopupChainsPayload({
+      selectedItem,
+      beginTime,
+      endTime,
+      page: targetPage,
+    })
+    const response = await queryRightPanelOutageChains(payload)
+    if (requestId !== countyWarningPopupRequestId) {
+      return
+    }
+
+    const remoteData = resolveOutageChainsResponseData(response) || {}
+    const remoteList = Array.isArray(remoteData.list) ? remoteData.list : []
+    const resolvedPage = Math.max(1, Math.round(safeNumber(remoteData.page) || payload.page))
+    const resolvedTotal = Math.max(safeNumber(remoteData.total), remoteList.length)
+
+    countyWarningPopupCurrentPage.value = resolvedPage
+    countyWarningPopupTotal.value = resolvedTotal
+    countyWarningPopupEvents.value = remoteList
+      .map((chain, index) =>
+        mapCountyWarningPopupChainEvent(
+          chain,
+          (resolvedPage - 1) * COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE + index,
+        ),
+      )
+      .sort((a, b) => b.sortTime - a.sortTime)
+  } catch (error) {
+    if (requestId !== countyWarningPopupRequestId) {
+      return
+    }
+    console.error(error)
+    countyWarningPopupEvents.value = []
+    countyWarningPopupTotal.value = 0
+    countyWarningPopupError.value = '停电事件加载失败，请稍后重试。'
+  } finally {
+    if (requestId === countyWarningPopupRequestId) {
+      countyWarningPopupLoading.value = false
+    }
+  }
+}
+
+const openCountyWarningPopup = (item) => {
   const selectedItem = item && typeof item === 'object' ? item : {}
   const countyName = toCountyDisplayName(selectedItem.countyName || selectedItem.name || '供电单位')
   const beginTime = toBackendDateTime(queryStartTime.value)
   const endTime = toBackendDateTime(queryEndTime.value)
   const countyId = getCountyWarningPopupCountyId(selectedItem)
-  const requestId = ++countyWarningPopupRequestId
 
   countyWarningPopupVisible.value = true
   countyWarningPopupCounty.value = countyName
   countyWarningPopupEvents.value = []
   countyWarningPopupLoading.value = false
   countyWarningPopupError.value = ''
+  countyWarningPopupSelectedItem.value = { ...selectedItem, countyId }
+  countyWarningPopupCurrentPage.value = 1
+  countyWarningPopupTotal.value = 0
 
   if (!beginTime || !endTime) {
     countyWarningPopupError.value = '请完整选择开始和结束时间。'
@@ -1906,76 +1963,29 @@ const openCountyWarningPopup = async (item) => {
     return
   }
 
-  countyWarningPopupLoading.value = true
+  void loadCountyWarningPopupPage({
+    selectedItem: countyWarningPopupSelectedItem.value,
+    beginTime,
+    endTime,
+    page: 1,
+  })
+}
 
-  try {
-    const chainMap = new Map()
-    const fetchedPageKeys = new Set()
-    let page = 1
-    let totalPages = null
-
-    while (totalPages === null || page <= totalPages) {
-      const payload = buildCountyWarningPopupChainsPayload({
-        selectedItem: { ...selectedItem, countyId },
-        beginTime,
-        endTime,
-        page,
-      })
-      const response = await queryRightPanelOutageChains(payload)
-      if (requestId !== countyWarningPopupRequestId) {
-        return
-      }
-
-      const remoteData = resolveOutageChainsResponseData(response) || {}
-      const remoteList = Array.isArray(remoteData.list) ? remoteData.list : []
-      const total = safeNumber(remoteData.total)
-
-      if (total > 0) {
-        totalPages = Math.max(1, Math.ceil(total / COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE))
-      } else if (remoteList.length < COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE) {
-        totalPages = page
-      }
-
-      const pageKeys = remoteList.map((chain, index) =>
-        getCountyWarningPopupChainKey(chain, (page - 1) * COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE + index),
-      )
-      if (remoteList.length > 0 && pageKeys.every((key) => fetchedPageKeys.has(key))) {
-        break
-      }
-      pageKeys.forEach((key) => fetchedPageKeys.add(key))
-
-      remoteList.forEach((chain, index) => {
-        const key = getCountyWarningPopupChainKey(chain, (page - 1) * COUNTY_WARNING_POPUP_CHAIN_PAGE_SIZE + index)
-        if (!chainMap.has(key)) {
-          chainMap.set(key, chain)
-        }
-      })
-
-      if (remoteList.length === 0) {
-        break
-      }
-      page += 1
-    }
-
-    if (requestId !== countyWarningPopupRequestId) {
-      return
-    }
-
-    countyWarningPopupEvents.value = Array.from(chainMap.values())
-      .map((chain, index) => mapCountyWarningPopupChainEvent(chain, index))
-      .sort((a, b) => b.sortTime - a.sortTime)
-  } catch (error) {
-    if (requestId !== countyWarningPopupRequestId) {
-      return
-    }
-    console.error(error)
-    countyWarningPopupEvents.value = []
-    countyWarningPopupError.value = '停电事件加载失败，请稍后重试。'
-  } finally {
-    if (requestId === countyWarningPopupRequestId) {
-      countyWarningPopupLoading.value = false
-    }
+const goCountyWarningPopupPage = (page) => {
+  const targetPage = Math.max(1, Math.round(safeNumber(page) || 1))
+  if (!countyWarningPopupVisible.value || !countyWarningPopupSelectedItem.value) {
+    return
   }
+  if (targetPage === countyWarningPopupCurrentPage.value) {
+    return
+  }
+
+  void loadCountyWarningPopupPage({
+    selectedItem: countyWarningPopupSelectedItem.value,
+    beginTime: toBackendDateTime(queryStartTime.value),
+    endTime: toBackendDateTime(queryEndTime.value),
+    page: targetPage,
+  })
 }
 
 const loadRightPanelOutageEvents = async ({
@@ -2429,6 +2439,9 @@ const loadDashboardData = async (customRange = null) => {
   countyWarningPopupEvents.value = []
   countyWarningPopupLoading.value = false
   countyWarningPopupError.value = ''
+  countyWarningPopupSelectedItem.value = null
+  countyWarningPopupCurrentPage.value = 1
+  countyWarningPopupTotal.value = 0
   countyWarningPopupRequestId += 1
   outageRangeChainsData.value = []
   outageRangeChainsTotal.value = 0
@@ -3593,10 +3606,16 @@ const sensitiveDemandStaticUsers = [
   },
 ]
 
+const SENSITIVE_DEMAND_USER_TAG_COLORS = {
+  important: '#35cfff',
+  sensitive: '#ff5b7d',
+  special: '#ffd23f',
+}
+
 const sensitiveDemandUserTagMeta = [
-  { key: 'important', label: '重要客户', color: '#68d4ff' },
-  { key: 'sensitive', label: '敏感客户', color: '#ff8fa3' },
-  { key: 'special', label: '特殊客户', color: '#ffd96b' },
+  { key: 'important', label: '重要客户', color: SENSITIVE_DEMAND_USER_TAG_COLORS.important },
+  { key: 'sensitive', label: '敏感客户', color: SENSITIVE_DEMAND_USER_TAG_COLORS.sensitive },
+  { key: 'special', label: '特殊客户', color: SENSITIVE_DEMAND_USER_TAG_COLORS.special },
 ]
 
 const sensitiveDemandFallbackUserTagCounts = {
@@ -3609,36 +3628,36 @@ const sensitiveDemandAutoDetailMeta = [
   {
     key: 'important',
     label: '重要客户',
-    color: '#68d4ff',
+    color: SENSITIVE_DEMAND_USER_TAG_COLORS.important,
     categories: [
-      { key: 'important-1', label: '一级客户', weight: 128, color: '#68d4ff' },
-      { key: 'important-2', label: '二级客户', weight: 114, color: '#89e0ff' },
-      { key: 'important-3', label: '三级客户', weight: 103, color: '#4ebdf1' },
-      { key: 'important-4', label: '四级客户', weight: 91, color: '#3aa1dc' },
-      { key: 'important-5', label: '五级客户', weight: 82, color: '#7aa9ff' },
+      { key: 'important-1', label: '一级客户', weight: 128, color: SENSITIVE_DEMAND_USER_TAG_COLORS.important },
+      { key: 'important-2', label: '二级客户', weight: 114, color: '#1769ff' },
+      { key: 'important-3', label: '三级客户', weight: 103, color: '#00f2a9' },
+      { key: 'important-4', label: '四级客户', weight: 91, color: '#9b5cff' },
+      { key: 'important-5', label: '五级客户', weight: 82, color: '#0080a8' },
     ],
   },
   {
     key: 'sensitive',
     label: '敏感客户',
-    color: '#ff8fa3',
+    color: SENSITIVE_DEMAND_USER_TAG_COLORS.sensitive,
     categories: [
-      { key: 'sensitive-risk', label: '高危客户', weight: 116, color: '#ff8fa3' },
-      { key: 'sensitive-frequent', label: '频繁停电客户', weight: 94, color: '#ff708c' },
-      { key: 'sensitive-service', label: '服务关注客户', weight: 86, color: '#ffabb9' },
-      { key: 'sensitive-malicious', label: '恶意诉求客户', weight: 72, color: '#e85f83' },
-      { key: 'sensitive-unreasonable', label: '不合理诉求客户', weight: 58, color: '#f08ac8' },
+      { key: 'sensitive-risk', label: '高危客户', weight: 116, color: SENSITIVE_DEMAND_USER_TAG_COLORS.sensitive },
+      { key: 'sensitive-frequent', label: '频繁停电客户', weight: 94, color: '#ff8a00' },
+      { key: 'sensitive-service', label: '服务关注客户', weight: 86, color: '#b84cff' },
+      { key: 'sensitive-malicious', label: '恶意诉求客户', weight: 72, color: '#ff2bb3' },
+      { key: 'sensitive-unreasonable', label: '不合理诉求客户', weight: 58, color: '#c9253f' },
     ],
   },
   {
     key: 'special',
     label: '特殊客户',
-    color: '#ffd96b',
+    color: SENSITIVE_DEMAND_USER_TAG_COLORS.special,
     categories: [
-      { key: 'special-electricity', label: '窃电或违约用电客户', weight: 73, color: '#ffd96b' },
-      { key: 'special-arrears', label: '拖欠电费客户', weight: 65, color: '#ffc94d' },
-      { key: 'special-info', label: '疑似套取信息客户', weight: 54, color: '#ffe28c' },
-      { key: 'special-harass', label: '骚扰来电客户', weight: 45, color: '#f2b84c' },
+      { key: 'special-electricity', label: '窃电或违约用电客户', weight: 73, color: SENSITIVE_DEMAND_USER_TAG_COLORS.special },
+      { key: 'special-arrears', label: '拖欠电费客户', weight: 65, color: '#ff7a00' },
+      { key: 'special-info', label: '疑似套取信息客户', weight: 54, color: '#8bdc2f' },
+      { key: 'special-harass', label: '骚扰来电客户', weight: 45, color: '#d14b9f' },
     ],
   },
 ]
@@ -3847,7 +3866,7 @@ const sensitiveDemandAutoDetailGroups = computed(() =>
       ...group,
       total,
       rows,
-      pieBackground: buildPieBackground(rows),
+      pieBackground: buildSeparatedPieBackground(rows),
     }
   }),
 )
@@ -4240,6 +4259,41 @@ const buildPieBackground = (items = []) => {
   }
 
   return `conic-gradient(${segments.join(', ')})`
+}
+
+const buildSeparatedPieBackground = (items = [], gap = 0.8) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return 'conic-gradient(rgba(124, 166, 201, 0.24) 0% 100%)'
+  }
+
+  let cursor = 0
+  const separatorColor = 'rgba(2, 13, 28, 0.82)'
+  const segments = []
+
+  items.forEach((item) => {
+    const start = cursor
+    const step = Math.max(0, Number(item.rate) || 0)
+    const end = Math.min(100, cursor + step)
+    const separatorWidth = step > gap * 2 ? gap : 0
+    const colorEnd = Math.max(start, end - separatorWidth)
+
+    if (step > 0) {
+      segments.push(`${item.color} ${start}% ${colorEnd}%`)
+      if (separatorWidth > 0) {
+        segments.push(`${separatorColor} ${colorEnd}% ${end}%`)
+      }
+    }
+
+    cursor = end
+  })
+
+  if (cursor < 100) {
+    segments.push(`rgba(124, 166, 201, 0.24) ${cursor}% 100%`)
+  }
+
+  return segments.length
+    ? `conic-gradient(${segments.join(', ')})`
+    : 'conic-gradient(rgba(124, 166, 201, 0.24) 0% 100%)'
 }
 
 const keyUserCountyStats = computed(() => {
@@ -6673,8 +6727,11 @@ onBeforeUnmount(() => {
               :popup-events="countyWarningPopupEvents"
               :popup-loading="countyWarningPopupLoading"
               :popup-error="countyWarningPopupError"
+              :popup-current-page="countyWarningPopupCurrentPage"
+              :popup-total="countyWarningPopupTotal"
               @select-county="openCountyWarningPopup"
               @close-popup="closeCountyWarningPopup"
+              @change-popup-page="goCountyWarningPopupPage"
             />
 
             <FaultLocationModuleCard

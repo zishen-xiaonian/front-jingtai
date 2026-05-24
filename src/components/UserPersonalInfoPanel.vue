@@ -11,8 +11,8 @@ const props = defineProps({
 
 <template>
   <section class="module-block user-personal-info-panel">
-    <div class="block-head">
-      <h3>用户个人信息</h3>
+    <div class="block-head user-personal-info-head">
+      <h3>用户信息</h3>
     </div>
 
     <div class="user-personal-info-list">

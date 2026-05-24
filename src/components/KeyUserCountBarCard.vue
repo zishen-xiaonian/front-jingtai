@@ -52,7 +52,18 @@ const props = defineProps({
 const emit = defineEmits(['open-detail-page', 'go-detail-page', 'close-detail-page', 'select-top-device'])
 
 const toCount = (value) => Math.max(0, Number(value) || 0)
-const TREND_MIN_TRACK_PERCENT = 16
+const TREND_MIN_TRACK_PERCENT = 10
+const TREND_VALUE_DIGIT_WIDTH = 7
+const TREND_VALUE_INLINE_PADDING = 8
+const TREND_VALUE_MIN_WIDTH = 18
+
+const getTrendValueMinWidth = (count) => {
+  if (count <= 0) {
+    return 0
+  }
+
+  return Math.max(String(count).length * TREND_VALUE_DIGIT_WIDTH + TREND_VALUE_INLINE_PADDING, TREND_VALUE_MIN_WIDTH)
+}
 
 const normalizedRows = computed(() =>
   props.rows.map((item, index) => {
@@ -63,37 +74,54 @@ const normalizedRows = computed(() =>
       name,
       importantCount,
       sensitiveCount,
-      totalCount: importantCount + sensitiveCount,
     }
   }),
 )
 
-const maxTotal = computed(() => normalizedRows.value.reduce((max, item) => Math.max(max, item.totalCount), 0))
+const maxImportantCount = computed(() =>
+  normalizedRows.value.reduce((max, item) => Math.max(max, item.importantCount), 0),
+)
+const maxSensitiveCount = computed(() =>
+  normalizedRows.value.reduce((max, item) => Math.max(max, item.sensitiveCount), 0),
+)
 
 const displayRows = computed(() => {
-  const base = maxTotal.value || 1
+  const importantBase = maxImportantCount.value || 1
+  const sensitiveBase = maxSensitiveCount.value || 1
   return normalizedRows.value.map((item) => {
-    const total = item.totalCount
-    const rawTrackPercent = total > 0 ? (total / base) * 100 : 0
     return {
       ...item,
-      trackPercent: total > 0 ? Math.max(rawTrackPercent, TREND_MIN_TRACK_PERCENT) : 0,
-      importantPercent: total > 0 ? (item.importantCount / total) * 100 : 0,
-      sensitivePercent: total > 0 ? (item.sensitiveCount / total) * 100 : 0,
+      importantTrackPercent: item.importantCount > 0
+        ? Math.max((item.importantCount / importantBase) * 100, TREND_MIN_TRACK_PERCENT)
+        : 0,
+      sensitiveTrackPercent: item.sensitiveCount > 0
+        ? Math.max((item.sensitiveCount / sensitiveBase) * 100, TREND_MIN_TRACK_PERCENT)
+        : 0,
     }
   })
 })
 
+const combinedDisplayRows = computed(() =>
+  [...displayRows.value].sort((a, b) =>
+    Math.max(b.importantCount, b.sensitiveCount) - Math.max(a.importantCount, a.sensitiveCount) ||
+      b.importantCount - a.importantCount ||
+      b.sensitiveCount - a.sensitiveCount,
+  ),
+)
+
 const emptyText = computed(() => '')
 
-const buildSegmentStyle = (percent, count) => {
+const buildSingleBarStyle = (percent, count) => {
   if (count <= 0 || percent <= 0) {
-    return { width: '0%' }
+    return {
+      width: '0%',
+      minWidth: '0px',
+    }
   }
 
   return {
     width: `${percent}%`,
-    minWidth: '28px',
+    minWidth: `${getTrendValueMinWidth(count)}px`,
   }
 }
 
@@ -393,20 +421,27 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
     </header>
 
     <div class="trend-chart-wrap space-trend-chart-wrap">
-      <div v-if="displayRows.length > 0" class="trend-rows">
-        <div v-for="row in displayRows" :key="row.name" class="trend-row">
+      <div v-if="displayRows.length > 0" class="space-split-chart">
+        <div v-for="row in combinedDisplayRows" :key="row.name" class="space-split-row">
           <div class="trend-row-name" :title="row.name">{{ row.name }}</div>
-
           <div class="trend-row-bars">
             <div class="trend-row-track">
-              <div class="trend-row-stack" :style="{ width: `${row.trackPercent}%` }">
-                <div class="trend-row-segment important" :style="buildSegmentStyle(row.importantPercent, row.importantCount)">
-                  <span v-if="row.importantCount > 0" class="trend-row-value">{{ row.importantCount }}</span>
-                </div>
-
-                <div class="trend-row-segment sensitive" :style="buildSegmentStyle(row.sensitivePercent, row.sensitiveCount)">
-                  <span v-if="row.sensitiveCount > 0" class="trend-row-value">{{ row.sensitiveCount }}</span>
-                </div>
+              <div
+                class="trend-row-single-bar important"
+                :style="buildSingleBarStyle(row.importantTrackPercent, row.importantCount)"
+              >
+                <span v-if="row.importantCount > 0" class="trend-row-value">{{ row.importantCount }}</span>
+              </div>
+            </div>
+          </div>
+          <span class="space-split-gap" aria-hidden="true"></span>
+          <div class="trend-row-bars">
+            <div class="trend-row-track">
+              <div
+                class="trend-row-single-bar sensitive"
+                :style="buildSingleBarStyle(row.sensitiveTrackPercent, row.sensitiveCount)"
+              >
+                <span v-if="row.sensitiveCount > 0" class="trend-row-value">{{ row.sensitiveCount }}</span>
               </div>
             </div>
           </div>
