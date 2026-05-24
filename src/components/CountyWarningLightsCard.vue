@@ -1,6 +1,6 @@
 ﻿<script setup>
 import '../style.css'
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps({
   countyWarningLights: {
@@ -31,21 +31,27 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  popupCurrentPage: {
+    type: Number,
+    default: 1,
+  },
+  popupTotal: {
+    type: Number,
+    default: 0,
+  },
 })
 
-const emit = defineEmits(['select-county', 'close-popup'])
+const emit = defineEmits(['select-county', 'close-popup', 'change-popup-page'])
 
 const POPUP_PAGE_SIZE = 3
 
-const popupCurrentPage = ref(1)
+const popupCurrentPage = computed(() => Math.max(1, Math.round(Number(props.popupCurrentPage) || 1)))
 
-const popupTotalPages = computed(() => Math.max(1, Math.ceil(props.popupEvents.length / POPUP_PAGE_SIZE)))
+const popupTotalCount = computed(() => Math.max(Number(props.popupTotal) || props.popupEvents.length, 0))
 
-const popupPageStartIndex = computed(() => (popupCurrentPage.value - 1) * POPUP_PAGE_SIZE)
+const popupTotalPages = computed(() => Math.max(1, Math.ceil(popupTotalCount.value / POPUP_PAGE_SIZE)))
 
-const pagedPopupEvents = computed(() =>
-  props.popupEvents.slice(popupPageStartIndex.value, popupPageStartIndex.value + POPUP_PAGE_SIZE),
-)
+const pagedPopupEvents = computed(() => props.popupEvents)
 
 const popupPageItems = computed(() => {
   const total = popupTotalPages.value
@@ -90,21 +96,11 @@ const setPopupPage = (page) => {
     return
   }
 
-  popupCurrentPage.value = Math.min(Math.max(page, 1), popupTotalPages.value)
-}
-
-watch(
-  () => [props.popupVisible, props.popupCountyName],
-  () => {
-    popupCurrentPage.value = 1
-  },
-)
-
-watch(popupTotalPages, (total) => {
-  if (popupCurrentPage.value > total) {
-    popupCurrentPage.value = total
+  const targetPage = Math.min(Math.max(page, 1), popupTotalPages.value)
+  if (targetPage !== popupCurrentPage.value) {
+    emit('change-popup-page', targetPage)
   }
-})
+}
 </script>
 
 <template>

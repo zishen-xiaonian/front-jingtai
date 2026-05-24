@@ -59,8 +59,6 @@ const outageRangeTotalPages = computed(() => {
   return Math.ceil(total / OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
 })
 
-const outageRangePageStartIndex = computed(() => (props.outageRangeCurrentPage - 1) * OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
-
 const outageRangeRenderedRows = computed(() => OUTAGE_RANGE_DEFAULT_PAGE_SIZE)
 
 const outageRangePageButtons = computed(() => {
@@ -211,7 +209,7 @@ watch(
           @keydown.space.prevent="openOutageRangeChainDetail(item)"
         >
           <h4 class="outage-range-chain-title">
-            【链路{{ outageRangePageStartIndex + index + 1 }}】停电事件编号：{{ item.outageNumber }}
+            停电事件编号：{{ item.outageNumber }}
           </h4>
           <p class="outage-range-chain-meta">
             <span class="outage-range-meta-label">重要用户</span>
