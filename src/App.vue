@@ -26,6 +26,11 @@ import KeyUserCountBarCard from './components/KeyUserCountBarCard.vue'
 import FaultLocationModuleCard from './components/FaultLocationModuleCard.vue'
 import OutageRangeAssessmentCard from './components/OutageRangeAssessmentCard.vue'
 import CountyWarningLightsCard from './components/CountyWarningLightsCard.vue'
+import SearchBox from './components/SearchBox.vue'
+import UserPersonalInfoPanel from './components/UserPersonalInfoPanel.vue'
+import EmotionEvolutionAnalysisPanel from './components/EmotionEvolutionAnalysisPanel.vue'
+import IntelligentWarningPanel from './components/IntelligentWarningPanel.vue'
+import ReplyAssistantPanel from './components/ReplyAssistantPanel.vue'
 
 const tangshanCenter = [118.180194, 39.630867]
 
@@ -80,6 +85,7 @@ let infoWindow = null
 const isLeftCollapsed = ref(false)
 const isRightCollapsed = ref(false)
 const activePageTab = ref('outageUsers')
+const intelligentAnalysisSearchInput = ref('')
 const loading = ref(false)
 const dataError = ref('')
 const dataNotice = ref('')
@@ -3495,40 +3501,95 @@ const sensitiveDemandStaticUsers = [
     consNo: 'TS100861001',
     consName: '张文华',
     phone: '13803150001',
+    address: '唐山市路北区建设北路华庭小区3号楼1单元',
     count: 16,
     typeCounts: { service: 4, repair: 3, business: 3, restore: 2, voltage: 2, fee: 2 },
+    demandContents: [
+      '多次反馈停电后抢修进度不清晰，希望明确预计复电时间。',
+      '对95598回访解释不满意，认为服务态度生硬。',
+      '咨询业务办理进度时重复转接，产生明显不满。',
+    ],
+    emotionEvolution: '焦虑关注 -> 不满升级 -> 急躁催办',
+    emotionBasis: '该用户诉求集中在服务态度、停电报修和业务办理，连续诉求次数高，表达从询问复电时间逐步转为催办和投诉。',
+    warningLevel: '高风险预警',
+    warningBasis: ['历史工单聚类集中在服务态度与停电报修', '情绪演变呈现不满升级趋势', '近期待办诉求累计16次'],
+    replyTemplate: '张文华您好，已关注到您关于停电抢修进度和服务沟通的多次反馈。我们将优先核实现场抢修安排，明确预计复电时间，并由专人同步处理进展。对前期沟通体验不佳给您造成的不便，我们深表歉意。',
   },
   {
     key: 'sd-user-2',
     consNo: 'TS100861002',
     consName: '李建国',
     phone: '13803150002',
+    address: '唐山市丰南区青年路阳光家园8号楼',
     count: 14,
     typeCounts: { service: 2, repair: 4, business: 2, restore: 3, voltage: 1, fee: 2 },
+    demandContents: [
+      '集中反映停电报修后到场时间较慢。',
+      '多次追问复电进度，希望得到明确处理节点。',
+      '对电费电价解释存在疑问，需要进一步说明。',
+    ],
+    emotionEvolution: '担忧等待 -> 反复催促 -> 不满增强',
+    emotionBasis: '诉求以停电报修和复电进度为主，用户持续追问处理节点，等待时间拉长后负面情绪增强。',
+    warningLevel: '中高风险预警',
+    warningBasis: ['历史工单聚类集中在停电报修', '复电进度类诉求重复出现', '近期待办诉求累计14次'],
+    replyTemplate: '李建国您好，您的停电报修及复电进度诉求已记录。我们将协调抢修人员核实现场处理状态，并尽快反馈预计完成时间；关于电费电价疑问，也会同步安排客服人员为您解释明细。',
   },
   {
     key: 'sd-user-3',
     consNo: 'TS100861003',
     consName: '王丽娜',
     phone: '13803150003',
+    address: '唐山市开平区东城路民安里12号楼',
     count: 12,
     typeCounts: { service: 1, repair: 2, business: 4, restore: 2, voltage: 2, fee: 1 },
+    demandContents: [
+      '主要咨询业务办理流程和办理结果。',
+      '反馈电压波动影响家用电器使用。',
+      '停电后关注复电进度，但表达相对克制。',
+    ],
+    emotionEvolution: '疑惑咨询 -> 轻微担忧 -> 平稳跟进',
+    emotionBasis: '用户诉求以业务办理为主，夹杂电压质量和复电进度问题，整体情绪稳定但需要明确办理结果。',
+    warningLevel: '中风险预警',
+    warningBasis: ['历史工单聚类集中在业务办理', '电压质量问题可能引发后续投诉', '近期待办诉求累计12次'],
+    replyTemplate: '王丽娜您好，关于您咨询的业务办理进度，我们将核查当前环节并反馈办理结果；针对电压波动问题，也会安排专业人员排查供电质量，感谢您的耐心等待。',
   },
   {
     key: 'sd-user-4',
     consNo: 'TS100861004',
     consName: '赵明远',
     phone: '13803150004',
+    address: '唐山市古冶区林西道新苑小区5号楼',
     count: 10,
     typeCounts: { service: 2, repair: 1, business: 2, restore: 2, voltage: 2, fee: 1 },
+    demandContents: [
+      '对服务解释口径不一致提出质疑。',
+      '关注业务办理和复电进度。',
+      '反馈局部电压不稳，希望尽快排查。',
+    ],
+    emotionEvolution: '疑问较多 -> 关注处理 -> 轻度不满',
+    emotionBasis: '诉求类型分布较均衡，服务态度、业务办理、复电进度和电压质量均有涉及，情绪存在轻度负向变化。',
+    warningLevel: '中风险预警',
+    warningBasis: ['多类型诉求并发，处理链路较长', '服务解释一致性问题可能放大不满', '近期待办诉求累计10次'],
+    replyTemplate: '赵明远您好，您反馈的服务解释、业务办理、复电进度及电压质量问题我们已汇总。后续将统一核实处理口径，并尽快向您反馈排查和办理结果。',
   },
   {
     key: 'sd-user-5',
     consNo: 'TS100861005',
     consName: '刘晓梅',
     phone: '13803150005',
+    address: '唐山市路南区新华西道盛景园2号楼',
     count: 8,
     typeCounts: { service: 1, repair: 1, business: 1, restore: 2, voltage: 1, fee: 2 },
+    demandContents: [
+      '重点询问电费电价构成。',
+      '关注复电进度和停电影响时间。',
+      '希望得到更清晰的费用说明。',
+    ],
+    emotionEvolution: '疑惑咨询 -> 等待解释 -> 基本平稳',
+    emotionBasis: '诉求以电费电价和复电进度为主，用户主要需要清晰解释，当前未出现明显激烈表达。',
+    warningLevel: '一般关注',
+    warningBasis: ['历史工单聚类集中在电费电价', '复电进度诉求重复出现', '近期待办诉求累计8次'],
+    replyTemplate: '刘晓梅您好，关于您关注的电费电价问题，我们会为您核对账单构成并说明计费依据；复电进度也会同步跟进，确保您及时了解处理情况。',
   },
 ]
 
@@ -3585,6 +3646,7 @@ const sensitiveDemandAutoDetailMeta = [
 const showSensitiveDemandAutoDetail = ref(false)
 const selectedSensitiveDemandAutoDetailKey = ref('important')
 const selectedSensitiveDemandUserKey = ref(sensitiveDemandStaticUsers[0]?.key || '')
+const intelligentAnalysisSelectedUser = ref(sensitiveDemandStaticUsers[0] || null)
 
 const sensitiveDemandTopUsers = computed(() => sensitiveDemandStaticUsers)
 
@@ -3593,6 +3655,24 @@ const selectedSensitiveDemandUser = computed(() =>
     sensitiveDemandTopUsers.value[0] ||
     null,
 )
+
+const searchIntelligentAnalysisUser = () => {
+  const keyword = String(intelligentAnalysisSearchInput.value || '').trim().toLowerCase()
+  if (!keyword) {
+    intelligentAnalysisSelectedUser.value = sensitiveDemandTopUsers.value[0] || null
+    return
+  }
+
+  const matchedUser = sensitiveDemandTopUsers.value.find((item) => {
+    const consNo = String(item.consNo || '').toLowerCase()
+    const consName = String(item.consName || '').toLowerCase()
+    return consNo.includes(keyword) || consName.includes(keyword)
+  })
+
+  if (matchedUser) {
+    intelligentAnalysisSelectedUser.value = matchedUser
+  }
+}
 
 const sensitiveDemandTypeRows = computed(() =>
   sensitiveDemandTypeMeta.map((item) => ({
@@ -6584,73 +6664,85 @@ onBeforeUnmount(() => {
         </button>
 
         <div v-show="!isRightCollapsed" class="panel-inner">
-          <section class="card module-card">
-            <template v-if="activePageTab === 'outageUsers'">
-              <CountyWarningLightsCard
-                :county-warning-lights="countyWarningLights"
-                :loading="loading"
-                :popup-visible="countyWarningPopupVisible"
-                :popup-county-name="countyWarningPopupCounty"
-                :popup-events="countyWarningPopupEvents"
-                :popup-loading="countyWarningPopupLoading"
-                :popup-error="countyWarningPopupError"
-                @select-county="openCountyWarningPopup"
-                @close-popup="closeCountyWarningPopup"
-              />
+          <section v-if="activePageTab === 'outageUsers'" class="card module-card">
+            <CountyWarningLightsCard
+              :county-warning-lights="countyWarningLights"
+              :loading="loading"
+              :popup-visible="countyWarningPopupVisible"
+              :popup-county-name="countyWarningPopupCounty"
+              :popup-events="countyWarningPopupEvents"
+              :popup-loading="countyWarningPopupLoading"
+              :popup-error="countyWarningPopupError"
+              @select-county="openCountyWarningPopup"
+              @close-popup="closeCountyWarningPopup"
+            />
 
-              <FaultLocationModuleCard
-                :selected-fault-county="selectedRegion"
-                :county-region-options="countyRegionOptions"
-                :fault-location-summary="faultLocationSummary"
-                :filtered-fault-outage-events-length="filteredFaultOutageEvents.length"
-                :fault-location-loading="faultLocationLoading"
-                :show-outage-detail-page="showOutageDetailPage"
-                :outage-nature-overview="outageNatureOverview"
-                :outage-events-summary-loading="outageEventsSummaryLoading"
-                :outage-restore-overview="outageRestoreOverview"
-                :outage-detail-search-input="outageDetailSearchInput"
-                :outage-detail-selected-nature="outageDetailSelectedNature"
-                :paged-outage-detail-rows="pagedOutageDetailRows"
-                :filtered-outage-detail-rows-length="outageDetailTotal"
-                :outage-detail-page-buttons="outageDetailPageButtons"
-                :outage-detail-current-page="outageDetailCurrentPage"
-                :outage-detail-jump-page-input="outageDetailJumpPageInput"
-                :outage-detail-total-pages="outageDetailTotalPages"
-                :outage-detail-loading="outageDetailLoading"
-                :outage-detail-modal-visible="outageDetailModalVisible"
-                :outage-detail-dimension="outageDetailDimension"
-                :selected-outage-detail="selectedOutageDetail"
-                :outage-detail-grid-body-ref-setter="setOutageDetailGridBodyRef"
-                :outage-detail-pagination-ref-setter="setOutageDetailPaginationRef"
-                :outage-detail-page-jump-ref-setter="setOutageDetailPageJumpRef"
-                @update:selected-fault-county="selectedRegion = $event"
-                @open-outage-detail="openOutageDetailPage"
-                @fault-mode-change="handleFaultLocationModeChange"
-                @close-outage-detail="closeOutageDetailPage"
-                @update:outage-detail-search-input="outageDetailSearchInput = $event"
-                @apply-outage-detail-search="applyOutageDetailSearch"
-                @update:outage-detail-selected-nature="outageDetailSelectedNature = $event"
-                @open-outage-detail-modal="openOutageDetailModal"
-                @go-outage-detail-page="goOutageDetailPage"
-                @update:outage-detail-jump-page-input="outageDetailJumpPageInput = $event"
-                @jump-to-outage-detail-page="jumpToOutageDetailPage"
-                @close-outage-detail-modal="closeOutageDetailModal"
-              />
+            <FaultLocationModuleCard
+              :selected-fault-county="selectedRegion"
+              :county-region-options="countyRegionOptions"
+              :fault-location-summary="faultLocationSummary"
+              :filtered-fault-outage-events-length="filteredFaultOutageEvents.length"
+              :fault-location-loading="faultLocationLoading"
+              :show-outage-detail-page="showOutageDetailPage"
+              :outage-nature-overview="outageNatureOverview"
+              :outage-events-summary-loading="outageEventsSummaryLoading"
+              :outage-restore-overview="outageRestoreOverview"
+              :outage-detail-search-input="outageDetailSearchInput"
+              :outage-detail-selected-nature="outageDetailSelectedNature"
+              :paged-outage-detail-rows="pagedOutageDetailRows"
+              :filtered-outage-detail-rows-length="outageDetailTotal"
+              :outage-detail-page-buttons="outageDetailPageButtons"
+              :outage-detail-current-page="outageDetailCurrentPage"
+              :outage-detail-jump-page-input="outageDetailJumpPageInput"
+              :outage-detail-total-pages="outageDetailTotalPages"
+              :outage-detail-loading="outageDetailLoading"
+              :outage-detail-modal-visible="outageDetailModalVisible"
+              :outage-detail-dimension="outageDetailDimension"
+              :selected-outage-detail="selectedOutageDetail"
+              :outage-detail-grid-body-ref-setter="setOutageDetailGridBodyRef"
+              :outage-detail-pagination-ref-setter="setOutageDetailPaginationRef"
+              :outage-detail-page-jump-ref-setter="setOutageDetailPageJumpRef"
+              @update:selected-fault-county="selectedRegion = $event"
+              @open-outage-detail="openOutageDetailPage"
+              @fault-mode-change="handleFaultLocationModeChange"
+              @close-outage-detail="closeOutageDetailPage"
+              @update:outage-detail-search-input="outageDetailSearchInput = $event"
+              @apply-outage-detail-search="applyOutageDetailSearch"
+              @update:outage-detail-selected-nature="outageDetailSelectedNature = $event"
+              @open-outage-detail-modal="openOutageDetailModal"
+              @go-outage-detail-page="goOutageDetailPage"
+              @update:outage-detail-jump-page-input="outageDetailJumpPageInput = $event"
+              @jump-to-outage-detail-page="jumpToOutageDetailPage"
+              @close-outage-detail-modal="closeOutageDetailModal"
+            />
 
-              <OutageRangeAssessmentCard
-                :outage-summary="outageSummary"
-                :outage-summary-loading="outageScopeSummaryLoading"
-                :outage-range-chains="outageRangeChains"
-                :outage-range-total="outageRangeChainsTotal"
-                :outage-range-current-page="outageRangeChainsCurrentPage"
-                :outage-range-loading="outageRangeChainsLoading"
-                :show-outage-range-assessment-page="showOutageRangeAssessmentPage"
-                @open-outage-range-detail="openOutageRangeAssessmentPage"
-                @go-outage-range-page="goOutageRangeAssessmentPage"
-                @close-outage-range-detail="closeOutageRangeAssessmentPage"
-                @open-outage-range-chain-detail="locateOutageRangeChainOnMapFrame"
-              />
-            </template>
+            <OutageRangeAssessmentCard
+              :outage-summary="outageSummary"
+              :outage-summary-loading="outageScopeSummaryLoading"
+              :outage-range-chains="outageRangeChains"
+              :outage-range-total="outageRangeChainsTotal"
+              :outage-range-current-page="outageRangeChainsCurrentPage"
+              :outage-range-loading="outageRangeChainsLoading"
+              :show-outage-range-assessment-page="showOutageRangeAssessmentPage"
+              @open-outage-range-detail="openOutageRangeAssessmentPage"
+              @go-outage-range-page="goOutageRangeAssessmentPage"
+              @close-outage-range-detail="closeOutageRangeAssessmentPage"
+              @open-outage-range-chain-detail="locateOutageRangeChainOnMapFrame"
+            />
+          </section>
+
+          <section v-else class="card module-card sensitive-demand-module">
+            <SearchBox
+              :model-value="intelligentAnalysisSearchInput"
+              @update:model-value="intelligentAnalysisSearchInput = $event"
+              @search="searchIntelligentAnalysisUser"
+              @clear="searchIntelligentAnalysisUser"
+            />
+
+            <UserPersonalInfoPanel :user="intelligentAnalysisSelectedUser" />
+            <EmotionEvolutionAnalysisPanel :user="intelligentAnalysisSelectedUser" />
+            <IntelligentWarningPanel :user="intelligentAnalysisSelectedUser" />
+            <ReplyAssistantPanel :user="intelligentAnalysisSelectedUser" />
           </section>
         </div>
       </aside>

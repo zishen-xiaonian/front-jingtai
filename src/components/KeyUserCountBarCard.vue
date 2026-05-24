@@ -371,7 +371,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
 
 <template>
   <section
-    class="key-user-time-trend-card module-clickable"
+    class="key-user-time-trend-card module-clickable space-distribution-card"
     role="button"
     tabindex="0"
     @click="!detailPageVisible && openDetailPage()"
@@ -392,7 +392,7 @@ const formatPercent = (value) => `${value.toFixed(1)}%`
       </div>
     </header>
 
-    <div class="trend-chart-wrap">
+    <div class="trend-chart-wrap space-trend-chart-wrap">
       <div v-if="displayRows.length > 0" class="trend-rows">
         <div v-for="row in displayRows" :key="row.name" class="trend-row">
           <div class="trend-row-name" :title="row.name">{{ row.name }}</div>
