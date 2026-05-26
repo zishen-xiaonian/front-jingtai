@@ -21,7 +21,7 @@ const props = defineProps({
         <span class="user-personal-info-value">{{ props.user?.consName || '-' }}</span>
       </div>
       <div class="user-personal-info-row">
-        <span class="user-personal-info-label">用户ID</span>
+        <span class="user-personal-info-label">用户编号</span>
         <span class="user-personal-info-value">{{ props.user?.consNo || '-' }}</span>
       </div>
       <div class="user-personal-info-row">

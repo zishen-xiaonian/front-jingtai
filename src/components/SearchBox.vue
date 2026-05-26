@@ -8,7 +8,7 @@ const props = defineProps({
   },
   placeholder: {
     type: String,
-    default: '请输入用户名/用户ID',
+    default: '请输入用户编号',
   },
   loading: {
     type: Boolean,
